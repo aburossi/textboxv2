@@ -16,6 +16,16 @@
 
     let db; // Global state for the IndexedDB connection
 
+    // --- HELPER FUNCTIONS ---
+    function parseMarkdown(text) {
+        if (!text) return '';
+        // Bold: **text** or __text__
+        text = text.replace(/(\*\*|__)(?=\S)(.*?)(?<=\S)\1/g, '<strong>$2</strong>');
+        // Italic: *text* or _text_
+        text = text.replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, '<em>$2</em>');
+        return text;
+    }
+
     // --- DATABASE LOGIC ---
     function initializeDB(callback) {
         const request = indexedDB.open(DB_NAME, 1);
@@ -149,7 +159,7 @@
                     questionsList.className = 'questions-list';
                     questionKeys.forEach(key => {
                         const li = document.createElement('li');
-                        li.innerHTML = subData.questions[key]; // Questions might contain markdown-like formatting
+                        li.innerHTML = parseMarkdown(subData.questions[key]); // Use markdown parser
                         questionsList.appendChild(li);
                     });
                     subContent.appendChild(questionsList);

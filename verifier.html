@@ -280,6 +280,15 @@
 
         // --- UI Rendering & Population ---
 
+        function parseMarkdown(text) {
+            if (!text) return '';
+            // Bold: **text** or __text__
+            text = text.replace(/(\*\*|__)(?=\S)(.*?)(?<=\S)\1/g, '<strong>$2</strong>');
+            // Italic: *text* or _text_
+            text = text.replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, '<em>$2</em>');
+            return text;
+        }
+
         function populateFilters() {
             studentFilterList.innerHTML = '';
             const uniqueStudents = new Set(allLoadedData.map(d => d.identifier));
@@ -355,7 +364,7 @@
 
                             if (subPayload.questions && Object.keys(subPayload.questions).length > 0) {
                                 let questionsHtml = '<ol class="questions-list">';
-                                Object.values(subPayload.questions).forEach(q => { questionsHtml += `<li>${q}</li>`; });
+                                Object.values(subPayload.questions).forEach(q => { questionsHtml += `<li>${parseMarkdown(q)}</li>`; }); // Use markdown parser
                                 questionsHtml += '</ol>';
                                 subContent.innerHTML += questionsHtml;
                             }
