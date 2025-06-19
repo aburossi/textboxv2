@@ -169,6 +169,14 @@ button:hover {
     background-color: #3367D6;
 }
 
+#printAssignmentBtn {
+    background-color: #673AB7;  /* Purple */
+    color: white;
+}
+#printAssignmentBtn:hover {
+    background-color: #5E35B1;  
+}
+
 #savedAnswerContainer {
     margin-top: 20px;
     border: 1px solid var(--border-color);

@@ -1,4 +1,4 @@
-// script.js - v11 (Phase 6: Focused Assignment Submission)
+// script.js - v12 (Phase 7: Restore Print & Refine Messages)
 
 (function() {
     'use strict';
@@ -67,9 +67,8 @@
         if (!db) return callback([]);
         const transaction = db.transaction(['attachments'], 'readonly');
         const store = transaction.objectStore('attachments');
-        const request = store.getAll(); // Get all attachments first
+        const request = store.getAll();
         request.onsuccess = function() {
-            // Filter them by assignmentId client-side
             const filtered = (request.result || []).filter(att => att.assignmentId === assignmentId);
             callback(filtered);
         };
@@ -120,29 +119,29 @@
         }
     }
 
-    // --- *** MODIFIED: FOCUSED DATA GATHERING LOGIC *** ---
-    async function gatherCurrentAssignmentData() {
+    // --- FOCUSED DATA GATHERING LOGIC (Unchanged) ---
+    async function gatherCurrentAssignmentData(promptForIdentifier = true) {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
         if (!assignmentId) {
-            alert("Fehler: Keine 'assignmentId' in der URL gefunden. Abgabe nicht möglich.");
+            alert("Fehler: Keine 'assignmentId' in der URL gefunden. Aktion nicht möglich.");
             return null;
         }
 
-        const storedIdentifier = localStorage.getItem('aburossi_exporter_identifier') || '';
-        const identifier = prompt('Bitte gib deinen Namen oder eine eindeutige Kennung für diese Abgabe ein:', storedIdentifier);
-
-        if (!identifier) {
-            alert('Abgabe abgebrochen. Eine Kennung ist erforderlich.');
-            return null;
+        let identifier = localStorage.getItem('aburossi_exporter_identifier') || '';
+        if (promptForIdentifier) {
+            identifier = prompt('Bitte gib deinen Namen oder eine eindeutige Kennung für diese Aktion ein:', identifier);
+            if (!identifier) {
+                alert('Aktion abgebrochen. Eine Kennung ist erforderlich.');
+                return null;
+            }
+            localStorage.setItem('aburossi_exporter_identifier', identifier);
         }
-        localStorage.setItem('aburossi_exporter_identifier', identifier);
 
         const payload = { [assignmentId]: {} };
         const answerPrefix = `${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}`;
         const questionPrefix = `${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}`;
 
-        // Gather answers for the current assignment
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith(answerPrefix)) {
@@ -152,7 +151,6 @@
             }
         }
 
-        // Gather questions for the current assignment
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key && key.startsWith(questionPrefix)) {
@@ -164,7 +162,6 @@
             }
         }
         
-        // Gather attachments for the current assignment
         const attachmentsPromise = new Promise(resolve => {
             getAllAttachmentsForAssignment(assignmentId, attachments => resolve(attachments));
         });
@@ -173,15 +170,11 @@
         attachments.forEach(att => {
             if (!payload[assignmentId][att.subId]) payload[assignmentId][att.subId] = {};
             if (!payload[assignmentId][att.subId].attachments) payload[assignmentId][att.subId].attachments = [];
-            payload[assignmentId][att.subId].attachments.push({
-                fileName: att.fileName,
-                fileType: att.fileType,
-                data: att.data
-            });
+            payload[assignmentId][att.subId].attachments.push({ fileName: att.fileName, fileType: att.fileType, data: att.data });
         });
 
         if (Object.keys(payload[assignmentId]).length === 0) {
-            alert("Für diesen Auftrag wurden keine Daten zum Abgeben gefunden.");
+            alert("Für diesen Auftrag wurden keine Daten zum Verarbeiten gefunden.");
             return null;
         }
 
@@ -192,21 +185,15 @@
             } catch (e) { console.error("Error creating signature:", e); }
         }
 
-        return {
-            identifier: identifier,
-            assignmentId: assignmentId, // Add assignmentId to the top level for the new filename
-            payload,
-            signature,
-            createdAt: new Date().toISOString()
-        };
+        return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
     // --- *** MODIFIED: SUBMISSION FUNCTION *** ---
     async function submitAssignment() {
         console.log("Starting assignment submission process...");
         
-        const finalObject = await gatherCurrentAssignmentData();
-        if (!finalObject) return; // User cancelled or no data
+        const finalObject = await gatherCurrentAssignmentData(true); // true = prompt for identifier
+        if (!finalObject) return;
 
         if (!GOOGLE_SCRIPT_URL) {
             alert('Konfigurationsfehler: Die Abgabe-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
@@ -231,7 +218,11 @@
             const result = await response.json();
 
             if (response.ok && result.status === 'success') {
-                alert(`Erfolg! Deine Arbeit wurde in Google Drive gespeichert als: ${result.fileName}`);
+                // Create a temporary element to display the styled message
+                const messageContainer = document.createElement('div');
+                messageContainer.innerHTML = `Deine Arbeit ist beim Lehrer angekommen und als <strong>${result.fileName}</strong> gespeichert.`;
+                // Use a simple alert to show the message. For a styled modal, a library would be better.
+                alert(messageContainer.textContent);
             } else {
                 throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
             }
@@ -239,6 +230,54 @@
             console.error('Google Drive submission failed:', error);
             alert(`Fehler beim Senden der Daten an Google Drive. Dies könnte ein Internetproblem sein.\n\nBitte versuche es erneut.\n\nFehler: ${error.message}`);
         }
+    }
+
+    // --- *** NEW: PRINT FUNCTION *** ---
+    async function printAssignment() {
+        const data = await gatherCurrentAssignmentData(false); // false = don't prompt for identifier
+        if (!data || !data.payload) return;
+
+        const assignmentId = data.assignmentId;
+        const assignmentData = data.payload[assignmentId];
+        const assignmentSuffix = assignmentId.includes('_') ? assignmentId.substring(assignmentId.indexOf('_') + 1) : assignmentId;
+
+        const sortedSubIds = Object.keys(assignmentData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        
+        let allContent = `<h2>${assignmentSuffix}</h2>`;
+        sortedSubIds.forEach((subId, index) => {
+            const subData = assignmentData[subId];
+            const answerContent = subData.answer;
+            const questions = subData.questions;
+
+            let questionsHtml = '';
+            if (questions && Object.keys(questions).length > 0) {
+                const sortedKeys = Object.keys(questions).sort((a, b) => (parseInt(a.replace('question', ''), 10) - parseInt(b.replace('question', ''), 10)));
+                questionsHtml = '<div class="questions-print"><ol>';
+                sortedKeys.forEach(qKey => { questionsHtml += `<li>${parseMarkdown(questions[qKey])}</li>`; });
+                questionsHtml += '</ol></div>';
+            }
+
+            if (questionsHtml || answerContent) {
+                const blockClass = 'sub-assignment-block' + (index > 0 ? ' new-page' : '');
+                allContent += `<div class="${blockClass}">`;
+                allContent += `<h3>Thema: ${subId}</h3>`;
+                if (questionsHtml) allContent += questionsHtml;
+                allContent += `<div class="lined-content">${answerContent || '<p><em>Keine Antwort vorhanden.</em></p>'}</div>`;
+                allContent += `</div>`;
+            }
+        });
+
+        printFormattedContent(allContent, `Druckansicht: ${assignmentSuffix}`);
+    }
+
+    function printFormattedContent(content, printWindowTitle = 'Druckansicht') {
+        const printWindow = window.open('', '', 'height=800,width=800');
+        if (!printWindow) { alert("Bitte erlaube Pop-up-Fenster, um drucken zu können."); return; }
+        const lineHeight = '1.4em';
+        const lineColor = '#d2d2d2';
+        printWindow.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>${printWindowTitle}</title><style>body{font-family:Arial,sans-serif;color:#333;line-height:${lineHeight};padding:${lineHeight};margin:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4;margin:1cm}.lined-content{background-color:#fdfdfa;position:relative;min-height:calc(22 * ${lineHeight});height:auto;overflow:visible;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(${lineHeight} - 1px),${lineColor} calc(${lineHeight} - 1px),${lineColor} ${lineHeight});background-size:100% ${lineHeight};background-position:0 0;background-repeat:repeat-y}h1,h2,h3,p,li,div,.questions-print,.sub-assignment-block{line-height:inherit;background-color:transparent!important;margin-top:0;margin-bottom:0}h2{color:#003f5c;margin-bottom:${lineHeight}}h3{color:#2f4b7c;margin-top:${lineHeight};margin-bottom:${lineHeight};page-break-after:avoid}ul,ol{margin-top:0;margin-bottom:${lineHeight};padding-left:2em}.questions-print ol{margin-bottom:${lineHeight};padding-left:1.5em}.questions-print li{margin-bottom:.25em}.sub-assignment-block{margin-bottom:${lineHeight};padding-top:.1px}@media print{.sub-assignment-block{page-break-after:always}.sub-assignment-block:last-child{page-break-after:auto}}</style></head><body>${content}</body></html>`);
+        printWindow.document.close();
+        printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
     // --- ATTACHMENT & QUESTION LOGIC (Unchanged) ---
@@ -357,6 +396,12 @@
         const submitBtn = document.getElementById('submitAssignmentBtn');
         if (submitBtn) {
             submitBtn.addEventListener('click', submitAssignment);
+        }
+
+        // Add event listener for the print button
+        const printBtn = document.getElementById('printAssignmentBtn');
+        if (printBtn) {
+            printBtn.addEventListener('click', printAssignment);
         }
     });
 
