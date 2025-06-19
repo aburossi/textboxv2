@@ -79,6 +79,24 @@
         };
     }
 
+    function getAttachmentsForAssignment(assignmentId, callback) {
+        if (!db) return callback([]);
+        const transaction = db.transaction(['attachments'], 'readonly');
+        const store = transaction.objectStore('attachments');
+        const index = store.index('assignment_sub_idx');
+        // Use a key range to get all entries for the given assignmentId
+        const range = IDBKeyRange.bound([assignmentId, ''], [assignmentId, '\uffff']);
+        const request = index.getAll(range);
+
+        request.onsuccess = function() {
+            callback(request.result || []);
+        };
+        request.onerror = function(event) {
+            console.error('Error fetching attachments for assignment:', event.target.error);
+            callback([]);
+        };
+    }
+
     function getAllAttachments(callback) {
         if (!db) return callback([]);
         const transaction = db.transaction(['attachments'], 'readonly');
@@ -224,8 +242,8 @@
                 }
             }
             if (subIdSet.size === 0) {
-                 alert("Keine gespeicherten Themen für dieses Kapitel gefunden.");
-                 return;
+                alert("Keine gespeicherten Themen für dieses Kapitel gefunden.");
+                return;
             }
 
             const sortedSubIds = Array.from(subIdSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
@@ -254,7 +272,7 @@
             processAndPrint(localStorage, false);
         }
     }
-    
+
     // --- ATTACHMENT & EXPORT LOGIC ---
     async function exportAllToJson() {
         console.log("Starting JSON export process...");
@@ -386,6 +404,51 @@
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         console.log("Export successful.");
+    }
+
+    async function downloadAttachmentsAsZip() {
+        if (typeof JSZip === 'undefined') {
+            alert('JSZip library not loaded. Cannot create ZIP file.');
+            return;
+        }
+
+        const params = getQueryParams();
+        const assignmentId = params.get('assignmentId');
+        if (!assignmentId) {
+            alert('No assignment ID found in the URL.');
+            return;
+        }
+
+        getAttachmentsForAssignment(assignmentId, (attachments) => {
+            if (attachments.length === 0) {
+                alert('No attachments found for this assignment.');
+                return;
+            }
+
+            const zip = new JSZip();
+
+            attachments.forEach(att => {
+                const base64Data = att.data.substring(att.data.indexOf(',') + 1);
+                const fullPath = `${att.subId}/${att.fileName}`;
+                zip.file(fullPath, base64Data, { base64: true });
+            });
+
+            zip.generateAsync({ type: "blob" })
+                .then(function(blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${assignmentId}_attachments.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                })
+                .catch(function(err) {
+                    console.error("Error generating ZIP file:", err);
+                    alert("An error occurred while creating the ZIP file.");
+                });
+        });
     }
 
     function loadAndDisplayAttachments() {
@@ -565,6 +628,12 @@
         const exportJsonBtn = document.getElementById('exportJsonBtn');
         if (exportJsonBtn) {
             exportJsonBtn.addEventListener('click', exportAllToJson);
+        }
+
+        // --- Attach event listener for the new attachments download button ---
+        const downloadAttachmentsBtn = document.getElementById('downloadAttachmentsBtn');
+        if (downloadAttachmentsBtn) {
+            downloadAttachmentsBtn.addEventListener('click', downloadAttachmentsAsZip);
         }
     });
 
