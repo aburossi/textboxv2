@@ -162,6 +162,13 @@ button:hover {
     background-color: #5E35B1;  
 }
 
+#exportJsonBtn {
+    background-color: #00796B;
+}
+#exportJsonBtn:hover {
+    background-color: #00695C;
+}
+
 #savedAnswerContainer {
     margin-top: 20px;
     border: 1px solid var(--border-color);
