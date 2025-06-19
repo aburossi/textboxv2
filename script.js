@@ -1,4 +1,4 @@
-// script.js - v15 (Phase 10: Fix Local Backup Creation)
+// script.js - v16 (FINAL: Restore Submit/Print and keep Backup/Import)
 
 (function() {
     'use strict';
@@ -82,11 +82,12 @@
     }
     
     // --- HELPER FUNCTIONS ---
+    function debounce(func, wait) { let timeout; return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); }; }
     const getQueryParams = () => new URLSearchParams(window.location.search);
     const parseMarkdown = (text) => { if (!text) return ''; text = text.replace(/(\*\*|__)(?=\S)(.*?)(?<=\S)\1/g, '<strong>$2</strong>'); text = text.replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, '<em>$2</em>'); return text; };
     function showSaveIndicator() { const i = document.getElementById('saveIndicator'); if (!i) return; i.style.opacity = '1'; setTimeout(() => { i.style.opacity = '0'; }, 2000); }
-    const debouncedSave = debounce(saveContent, 1500);
-    function debounce(func, wait) { let timeout; return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); }; }
+    async function createSha256Hash(str) { const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-256', b); return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join(''); }
+    function getCanonicalJSONString(data) { if (data === null || typeof data !== 'object') return JSON.stringify(data); if (Array.isArray(data)) return `[${data.map(getCanonicalJSONString).join(',')}]`; const k = Object.keys(data).sort(); const p = k.map(key => `${JSON.stringify(key)}:${getCanonicalJSONString(data[key])}`); return `{${p.join(',')}}`; }
 
     // --- DATA SAVING & LOADING ---
     function saveContent() {
@@ -100,6 +101,7 @@
         localStorage.setItem(`${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, htmlContent);
         showSaveIndicator();
     }
+    const debouncedSave = debounce(saveContent, 1500);
 
     function loadContent() {
         const params = getQueryParams();
@@ -110,17 +112,145 @@
         if (savedText) { quill.root.innerHTML = savedText; }
     }
 
-    // --- GOOGLE DRIVE SUBMISSION ---
-    async function submitAssignment() {
-        // This function remains unchanged and is not detailed here for brevity.
-        // It gathers data for the *current* assignmentId and sends it.
-        alert("Google Drive submission is a separate function and works as before.");
+    // --- FOCUSED DATA GATHERING LOGIC (for Submit/Print) ---
+    async function gatherCurrentAssignmentData(promptForIdentifier = true) {
+        const params = getQueryParams();
+        const assignmentId = params.get('assignmentId');
+        if (!assignmentId) {
+            alert("Fehler: Keine 'assignmentId' in der URL gefunden. Aktion nicht möglich.");
+            return null;
+        }
+
+        let identifier = localStorage.getItem('aburossi_exporter_identifier') || '';
+        if (promptForIdentifier) {
+            identifier = prompt('Bitte gib deinen Namen oder eine eindeutige Kennung für diese Aktion ein:', identifier);
+            if (!identifier) {
+                alert('Aktion abgebrochen. Eine Kennung ist erforderlich.');
+                return null;
+            }
+            localStorage.setItem('aburossi_exporter_identifier', identifier);
+        }
+
+        const payload = { [assignmentId]: {} };
+        const answerPrefix = `${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}`;
+        const questionPrefix = `${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}`;
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(answerPrefix)) {
+                const subId = key.substring(answerPrefix.length);
+                if (!payload[assignmentId][subId]) payload[assignmentId][subId] = {};
+                payload[assignmentId][subId].answer = localStorage.getItem(key);
+            }
+        }
+
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(questionPrefix)) {
+                const subId = key.substring(questionPrefix.length);
+                if (!payload[assignmentId][subId]) payload[assignmentId][subId] = {};
+                try {
+                    payload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
+                } catch (e) { console.error("Error parsing questions for export", e); }
+            }
+        }
+        
+        const attachmentsPromise = new Promise(resolve => {
+            getAllAttachmentsForAssignment(assignmentId, attachments => resolve(attachments));
+        });
+        const attachments = await attachmentsPromise;
+        
+        attachments.forEach(att => {
+            if (!payload[assignmentId][att.subId]) payload[assignmentId][att.subId] = {};
+            if (!payload[assignmentId][att.subId].attachments) payload[assignmentId][att.subId].attachments = [];
+            payload[assignmentId][att.subId].attachments.push({ fileName: att.fileName, fileType: att.fileType, data: att.data });
+        });
+
+        if (Object.keys(payload[assignmentId]).length === 0) {
+            alert("Für diesen Auftrag wurden keine Daten zum Verarbeiten gefunden.");
+            return null;
+        }
+
+        let signature = null;
+        if (window.crypto && window.crypto.subtle) {
+            try {
+                signature = await createSha256Hash(getCanonicalJSONString(payload));
+            } catch (e) { console.error("Error creating signature:", e); }
+        }
+
+        return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- PRINTING ---
+    // --- *** RESTORED: SUBMISSION & PRINT FUNCTIONS *** ---
+    async function submitAssignment() {
+        console.log("Starting assignment submission process...");
+        const finalObject = await gatherCurrentAssignmentData(true);
+        if (!finalObject) return;
+        if (!GOOGLE_SCRIPT_URL) {
+            alert('Konfigurationsfehler: Die Abgabe-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
+            return;
+        }
+        const confirmation = confirm("Du bist dabei, alle gespeicherten Aufträge für dieses Kapitel an deinen Lehrer zu senden. Fortfahren?");
+        if (!confirmation) {
+            alert("Abgabe abgebrochen.");
+            return;
+        }
+        alert('Deine Arbeit wird an Google Drive übermittelt. Dies kann einen Moment dauern. Bitte warte auf die Erfolgsbestätigung.');
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'cors', body: JSON.stringify(finalObject) });
+            const result = await response.json();
+            if (response.ok && result.status === 'success') {
+                const messageContainer = document.createElement('div');
+                messageContainer.innerHTML = `Deine Arbeit ist beim Lehrer angekommen und als <strong>${result.fileName}</strong> gespeichert.`;
+                alert(messageContainer.textContent);
+            } else {
+                throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
+            }
+        } catch (error) {
+            console.error('Google Drive submission failed:', error);
+            alert(`Fehler beim Senden der Daten an Google Drive. Dies könnte ein Internetproblem sein.\n\nBitte versuche es erneut.\n\nFehler: ${error.message}`);
+        }
+    }
+
     async function printAssignment() {
-        // This function remains unchanged and is not detailed here for brevity.
-        alert("Printing is a separate function and works as before.");
+        const data = await gatherCurrentAssignmentData(false);
+        if (!data || !data.payload) return;
+        const assignmentId = data.assignmentId;
+        const assignmentData = data.payload[assignmentId];
+        const assignmentSuffix = assignmentId.includes('_') ? assignmentId.substring(assignmentId.indexOf('_') + 1) : assignmentId;
+        const sortedSubIds = Object.keys(assignmentData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        let allContent = `<h2>${assignmentSuffix}</h2>`;
+        sortedSubIds.forEach((subId, index) => {
+            const subData = assignmentData[subId];
+            const answerContent = subData.answer;
+            const questions = subData.questions;
+            let questionsHtml = '';
+            if (questions && Object.keys(questions).length > 0) {
+                const sortedKeys = Object.keys(questions).sort((a, b) => (parseInt(a.replace('question', ''), 10) - parseInt(b.replace('question', ''), 10)));
+                questionsHtml = '<div class="questions-print"><ol>';
+                sortedKeys.forEach(qKey => { questionsHtml += `<li>${parseMarkdown(questions[qKey])}</li>`; });
+                questionsHtml += '</ol></div>';
+            }
+            if (questionsHtml || answerContent) {
+                const blockClass = 'sub-assignment-block' + (index > 0 ? ' new-page' : '');
+                allContent += `<div class="${blockClass}">`;
+                allContent += `<h3>Thema: ${subId}</h3>`;
+                if (questionsHtml) allContent += questionsHtml;
+                allContent += `<div class="lined-content">${answerContent || '<p><em>Keine Antwort vorhanden.</em></p>'}</div>`;
+                allContent += `</div>`;
+            }
+        });
+        printFormattedContent(allContent, `Druckansicht: ${assignmentSuffix}`);
+    }
+
+    function printFormattedContent(content, printWindowTitle = 'Druckansicht') {
+        const printWindow = window.open('', '', 'height=800,width=800');
+        if (!printWindow) { alert("Bitte erlaube Pop-up-Fenster, um drucken zu können."); return; }
+        const lineHeight = '1.4em';
+        const lineColor = '#d2d2d2';
+        printWindow.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>${printWindowTitle}</title><style>body{font-family:Arial,sans-serif;color:#333;line-height:${lineHeight};padding:${lineHeight};margin:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4;margin:1cm}.lined-content{background-color:#fdfdfa;position:relative;min-height:calc(22 * ${lineHeight});height:auto;overflow:visible;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(${lineHeight} - 1px),${lineColor} calc(${lineHeight} - 1px),${lineColor} ${lineHeight});background-size:100% ${lineHeight};background-position:0 0;background-repeat:repeat-y}h1,h2,h3,p,li,div,.questions-print,.sub-assignment-block{line-height:inherit;background-color:transparent!important;margin-top:0;margin-bottom:0}h2{color:#003f5c;margin-bottom:${lineHeight}}h3{color:#2f4b7c;margin-top:${lineHeight};margin-bottom:${lineHeight};page-break-after:avoid}ul,ol{margin-top:0;margin-bottom:${lineHeight};padding-left:2em}.questions-print ol{margin-bottom:${lineHeight};padding-left:1.5em}.questions-print li{margin-bottom:.25em}.sub-assignment-block{margin-bottom:${lineHeight};padding-top:.1px}@media print{.sub-assignment-block{page-break-after:always}.sub-assignment-block:last-child{page-break-after:auto}}</style></head><body>${content}</body></html>`);
+        printWindow.document.close();
+        printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
     // --- *** LOCAL BACKUP & RESTORE FUNCTIONALITY (FOR OBSIDIAN) *** ---
@@ -134,10 +264,8 @@
         request.onerror = (e) => { console.error('Error fetching all attachments for backup:', e.target.error); callback([]); };
     }
 
-    // --- *** THIS FUNCTION IS FIXED *** ---
     function processAllDataForBackup(attachments) {
         const dataStore = {};
-        // First, process all text and question data from localStorage
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key.startsWith(STORAGE_PREFIX) || key.startsWith(QUESTIONS_PREFIX)) {
@@ -154,9 +282,6 @@
                 }
             }
         }
-        // THE FIX: Now, process attachments. If a corresponding entry doesn't exist
-        // from the localStorage scan, create it. This ensures attachments are
-        // never missed, even if there's no text answer.
         attachments.forEach(att => {
             const { assignmentId, subId } = att;
             if (!dataStore[assignmentId]) dataStore[assignmentId] = {};
