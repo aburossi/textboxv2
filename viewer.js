@@ -28,7 +28,7 @@
         return text;
     }
 
-    // --- DATABASE LOGIC ---
+    // --- DATABASE LOGIC (Unchanged) ---
     function initializeDB(callback) {
         const request = indexedDB.open(DB_NAME, 1);
         request.onupgradeneeded = function(event) {
@@ -61,7 +61,7 @@
         };
     }
 
-    // --- DATA GATHERING & PROCESSING ---
+    // --- DATA GATHERING & PROCESSING (Unchanged) ---
     function loadAndDisplayData() {
         dataContainer.innerHTML = `<p class="loading-message">Lade Daten...</p>`;
         initializeDB(() => {
@@ -102,7 +102,7 @@
         return dataStore;
     }
 
-    // --- UI RENDERING (Unchanged from previous version) ---
+    // --- UI RENDERING (Unchanged) ---
     function renderData(dataStore) {
         dataContainer.innerHTML = '';
         const assignmentIds = Object.keys(dataStore).sort();
@@ -172,22 +172,19 @@
         });
     }
 
-    // --- BACKUP & RESTORE LOGIC ---
+    // --- BACKUP & RESTORE LOGIC (MODIFIED) ---
     async function exportBackup() {
         alert("Backup wird erstellt. Dies kann einen Moment dauern.");
         try {
             const attachments = await new Promise(resolve => getAllAttachments(resolve));
             const dataStore = processAllData(attachments);
-
             if (Object.keys(dataStore).length === 0) {
                 alert("Keine Daten zum Sichern gefunden.");
                 return;
             }
-
             const zip = new JSZip();
             zip.file(BACKUP_FILENAME, JSON.stringify(dataStore, null, 2));
             const content = await zip.generateAsync({ type: "blob" });
-            
             const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
             saveAs(content, `allgemeinbildung-backup-${timestamp}.zip`);
         } catch (error) {
@@ -201,70 +198,81 @@
         if (!file) return;
 
         if (!confirm("WARNUNG: Das Einspielen eines Backups löscht ALLE aktuell gespeicherten Daten und ersetzt sie durch die Daten aus der Backup-Datei. Fortfahren?")) {
-            importFileInput.value = ''; // Reset file input
+            importFileInput.value = '';
             return;
         }
 
         try {
-            const zip = await JSZip.loadAsync(file);
-            const backupFile = zip.file(BACKUP_FILENAME);
-
-            if (!backupFile) {
-                alert(`Fehler: Die ZIP-Datei enthält nicht die erwartete Datei '${BACKUP_FILENAME}'.`);
+            let jsonContent;
+            // Check file type and get JSON content accordingly
+            if (file.name.endsWith('.zip')) {
+                const zip = await JSZip.loadAsync(file);
+                const backupFile = zip.file(BACKUP_FILENAME);
+                if (!backupFile) {
+                    alert(`Fehler: Die ZIP-Datei enthält nicht die erwartete Datei '${BACKUP_FILENAME}'.`);
+                    importFileInput.value = '';
+                    return;
+                }
+                jsonContent = await backupFile.async("string");
+            } else if (file.name.endsWith('.json')) {
+                jsonContent = await file.text();
+            } else {
+                alert("Ungültiger Dateityp. Bitte eine .zip oder .json Backup-Datei auswählen.");
                 importFileInput.value = '';
                 return;
             }
 
-            const jsonContent = await backupFile.async("string");
             const dataStore = JSON.parse(jsonContent);
-
-            // Clear all existing data silently
-            await clearAllData(true);
-
-            // Restore data
-            const transaction = db.transaction([ATTACHMENT_STORE], 'readwrite');
-            const store = transaction.objectStore(ATTACHMENT_STORE);
-
-            for (const assignmentId in dataStore) {
-                for (const subId in dataStore[assignmentId]) {
-                    const subData = dataStore[assignmentId][subId];
-                    // Restore answer
-                    if (subData.answer) {
-                        localStorage.setItem(`${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, subData.answer);
-                    }
-                    // Restore questions
-                    if (subData.questions && Object.keys(subData.questions).length > 0) {
-                        localStorage.setItem(`${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, JSON.stringify(subData.questions));
-                    }
-                    // Restore attachments
-                    if (subData.attachments) {
-                        subData.attachments.forEach(att => {
-                            // The 'id' from the backup is irrelevant, IndexedDB will assign a new one.
-                            const { id, ...attachmentData } = att;
-                            store.add(attachmentData);
-                        });
-                    }
-                }
-            }
-            
-            transaction.oncomplete = () => {
-                alert("Backup erfolgreich wiederhergestellt!");
-                loadAndDisplayData(); // Refresh view
-            };
-            transaction.onerror = (e) => {
-                 console.error("Fehler bei der Wiederherstellung der Anhänge:", e.target.error);
-                 alert("Die Wiederherstellung ist fehlgeschlagen. Fehler beim Schreiben in die Datenbank.");
-            };
+            await restoreDataFromStoreObject(dataStore);
 
         } catch (error) {
             console.error("Import-Fehler:", error);
             alert("Ein Fehler ist beim Einspielen des Backups aufgetreten. Die Datei ist möglicherweise beschädigt oder hat ein falsches Format.");
         } finally {
-            importFileInput.value = ''; // Reset file input
+            importFileInput.value = '';
         }
     }
 
-    // --- DESTRUCTIVE ACTIONS ---
+    async function restoreDataFromStoreObject(dataStore) {
+        // This function now contains the core restoration logic
+        await clearAllData(true); // Clear existing data silently
+
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readwrite');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
+
+        for (const assignmentId in dataStore) {
+            for (const subId in dataStore[assignmentId]) {
+                const subData = dataStore[assignmentId][subId];
+                if (subData.answer) {
+                    localStorage.setItem(`${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, subData.answer);
+                }
+                if (subData.questions && Object.keys(subData.questions).length > 0) {
+                    localStorage.setItem(`${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, JSON.stringify(subData.questions));
+                }
+                if (subData.attachments) {
+                    subData.attachments.forEach(att => {
+                        const { id, ...attachmentData } = att;
+                        store.add(attachmentData);
+                    });
+                }
+            }
+        }
+        
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = () => {
+                alert("Backup erfolgreich wiederhergestellt!");
+                loadAndDisplayData();
+                resolve();
+            };
+            transaction.onerror = (e) => {
+                 console.error("Fehler bei der Wiederherstellung der Anhänge:", e.target.error);
+                 alert("Die Wiederherstellung ist fehlgeschlagen. Fehler beim Schreiben in die Datenbank.");
+                 reject(e.target.error);
+            };
+        });
+    }
+
+    // --- DESTRUCTIVE ACTIONS (Unchanged) ---
     async function clearAllData(silent = false) {
         if (!silent) {
             const confirmation1 = confirm("Bist du absolut sicher, dass du ALLE gespeicherten Arbeiten und Anhänge löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.");
@@ -272,16 +280,12 @@
             const confirmation2 = confirm("Letzte Warnung: Wirklich ALLE Daten löschen?");
             if (!confirmation2) return;
         }
-
-        // 1. Clear localStorage
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             if (key.startsWith('textbox-')) keysToRemove.push(key);
         }
         keysToRemove.forEach(key => localStorage.removeItem(key));
-
-        // 2. Clear IndexedDB object store
         return new Promise((resolve, reject) => {
             if (!db) {
                 if (!silent) alert("Alle Textantworten wurden gelöscht. Die Datenbank für Anhänge war nicht erreichbar.");
@@ -308,7 +312,7 @@
         });
     }
 
-    // --- INITIALIZATION & EVENT LISTENERS ---
+    // --- INITIALIZATION & EVENT LISTENERS (Unchanged) ---
     document.addEventListener('DOMContentLoaded', () => {
         loadAndDisplayData();
         reloadDataBtn.addEventListener('click', loadAndDisplayData);
