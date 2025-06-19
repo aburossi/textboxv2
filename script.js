@@ -1,4 +1,4 @@
-// script.js - v6 (Phase 2: JSON Export)
+// script.js - v7 (Phase 2: Robust Iframe-safe JSON Export)
 
 (function() {
     'use strict';
@@ -259,7 +259,6 @@
     async function exportAllToJson() {
         console.log("Starting JSON export process...");
 
-        // Get identifier from user, with a stored default
         const storedIdentifier = localStorage.getItem('aburossi_exporter_identifier') || '';
         const identifier = prompt('Please enter your name or a unique identifier for this export:', storedIdentifier);
 
@@ -267,10 +266,8 @@
             alert('Export cancelled. An identifier is required.');
             return;
         }
-        // Save the identifier for next time
         localStorage.setItem('aburossi_exporter_identifier', identifier);
 
-        // 1. Get answers (from extension or localStorage)
         const answersPromise = new Promise(resolve => {
             if (isExtensionActive()) {
                 window.addEventListener('ab-get-all-response', e => resolve(e.detail.allData || {}), { once: true });
@@ -295,15 +292,12 @@
             }
         });
 
-        // 2. Get all attachments from IndexedDB
         const attachmentsPromise = new Promise(resolve => {
             getAllAttachments(attachments => resolve(attachments));
         });
 
-        // 3. Wait for both to complete
         const [answersData, allAttachments] = await Promise.all([answersPromise, attachmentsPromise]);
 
-        // 4. Structure the data into a payload
         const payload = {};
         const ensurePath = (assignmentId, subId) => {
             if (!payload[assignmentId]) payload[assignmentId] = {};
@@ -312,14 +306,12 @@
             }
         };
 
-        // 5. Process answers
         for (const key in answersData) {
             const [assignmentId, subId] = key.split('|');
             ensurePath(assignmentId, subId);
             payload[assignmentId][subId].answer = answersData[key];
         }
 
-        // 6. Process questions from localStorage (always)
         const subPrefix = `_${SUB_STORAGE_PREFIX}`;
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -337,7 +329,6 @@
             }
         }
 
-        // 7. Process attachments
         allAttachments.forEach(att => {
             ensurePath(att.assignmentId, att.subId);
             payload[att.assignmentId][att.subId].attachments.push({
@@ -352,7 +343,6 @@
             return;
         }
 
-        // 8. Create signature and final object
         let signature = null;
         if (window.crypto && window.crypto.subtle) {
             try {
@@ -373,19 +363,74 @@
             createdAt: new Date().toISOString()
         };
 
-        // 9. Trigger download
+        // --- MODIFIED EXPORT/SAVE LOGIC ---
         const jsonString = JSON.stringify(finalObject, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
         const safeIdentifier = identifier.replace(/[^a-z0-9_.-]/gi, '_');
-        a.download = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        console.log("Export successful.");
+        const fileName = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
+
+        const inIframe = window.self !== window.top;
+
+        if (inIframe) {
+            // WORKAROUND for iframe environments that block downloads
+            const newWindow = window.open('', '_blank');
+            if (newWindow) {
+                newWindow.document.title = `Save Export: ${fileName}`;
+                newWindow.document.write(`
+                    <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Save Export: ${fileName}</title>
+                    <style>
+                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #333; padding: 20px; }
+                        .container { max-width: 900px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+                        h1 { color: #003f5c; border-bottom: 2px solid #00796B; padding-bottom: 10px; }
+                        p { line-height: 1.6; }
+                        pre { background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; max-height: 60vh; overflow-y: auto; border: 1px solid #444; }
+                        .instructions { border: 2px solid #00796B; padding: 15px; border-radius: 5px; background-color: #e0f2f1; margin-bottom: 20px; }
+                        .instructions strong { color: #c62828; font-weight: 600; }
+                        button { background-color: #00796B; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background-color 0.2s; }
+                        button:hover { background-color: #00695C; }
+                    </style>
+                    </head><body>
+                    <div class="container">
+                        <h1>Save Your Exported Data</h1>
+                        <div class="instructions">
+                            <p>To save your data, please use your browser's "Save Page As" feature.</p>
+                            <p><strong>Press Ctrl+S (on Windows/Linux) or Cmd+S (on Mac) now.</strong></p>
+                            <p>When prompted, ensure the file name is <strong>${fileName}</strong> and save it. You may need to manually rename the saved file to end in ".json".</p>
+                            <p>Alternatively, use the button below to copy the content and paste it into a new file.</p>
+                        </div>
+                        <button id="copyBtn">Copy Content to Clipboard</button>
+                        <pre id="jsonData">${jsonString.replace(/</g, '<').replace(/>/g, '>')}</pre>
+                    </div>
+                    <script>
+                        document.getElementById('copyBtn').addEventListener('click', () => {
+                            const textToCopy = document.getElementById('jsonData').textContent;
+                            navigator.clipboard.writeText(textToCopy).then(() => {
+                                alert('JSON content copied to clipboard!');
+                            }, (err) => {
+                                alert('Failed to copy text. Please copy it manually.');
+                                console.error('Clipboard copy failed: ', err);
+                            });
+                        });
+                        window.focus();
+                    <\/script>
+                    </body></html>`);
+                newWindow.document.close();
+                alert('Export cannot be downloaded automatically from this embedded view.\n\nA new tab has been opened. Please follow the instructions there to save your file.');
+            } else {
+                alert('Could not open a new window. It may have been blocked by a pop-up blocker. Please disable it for this site to export your data.');
+            }
+        } else {
+            // ORIGINAL BEHAVIOR: Trigger direct download
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            console.log("Export successful.");
+        }
     }
 
     function loadAndDisplayAttachments() {
@@ -561,7 +606,6 @@
             }
         });
 
-        // --- Attach event listener for the new export button ---
         const exportJsonBtn = document.getElementById('exportJsonBtn');
         if (exportJsonBtn) {
             exportJsonBtn.addEventListener('click', exportAllToJson);
