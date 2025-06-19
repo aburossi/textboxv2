@@ -162,6 +162,13 @@ button:hover {
     background-color: #5E35B1;  
 }
 
+#exportGoogleDriveBtn {
+    background-color: #4285F4; /* Google Blue */
+}
+#exportGoogleDriveBtn:hover {
+    background-color: #3367D6;
+}
+
 #exportJsonBtn {
     background-color: #00796B;
 }

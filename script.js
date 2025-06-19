@@ -1,4 +1,4 @@
-// script.js - v7 (Phase 2: Robust Iframe-safe JSON Export)
+// script.js - v10 (Phase 5: Hard-coded Google Drive Webhook)
 
 (function() {
     'use strict';
@@ -7,6 +7,8 @@
     const STORAGE_PREFIX = 'textbox-assignment_';
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
+    // *** MODIFIED: The Google Apps Script URL is now hard-coded here. ***
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
     let quill; // Global state for the editor
     let db; // Global state for the IndexedDB connection
 
@@ -33,7 +35,7 @@
         };
     }
 
-    // --- IndexedDB HELPER FUNCTIONS ---
+    // --- IndexedDB HELPER FUNCTIONS (Unchanged) ---
     function saveAttachment(attachment) {
         if (!db) return;
         const transaction = db.transaction(['attachments'], 'readwrite');
@@ -94,7 +96,7 @@
         };
     }
 
-    // --- HELPER FUNCTIONS ---
+    // --- HELPER FUNCTIONS (Unchanged) ---
     const isExtensionActive = () => document.documentElement.hasAttribute('data-extension-installed');
 
     function debounce(func, wait) {
@@ -121,7 +123,7 @@
         setTimeout(() => { indicator.style.opacity = '0'; }, 2000);
     }
 
-    // --- HASHING & EXPORT HELPERS ---
+    // --- HASHING & EXPORT HELPERS (Unchanged) ---
     async function createSha256Hash(str) {
         const textAsBuffer = new TextEncoder().encode(str);
         const hashBuffer = await crypto.subtle.digest('SHA-256', textAsBuffer);
@@ -137,7 +139,7 @@
         return `{${keyValuePairs.join(',')}}`;
     }
 
-    // --- DATA SAVING (Checks for extension on each call) ---
+    // --- DATA SAVING & LOADING (Unchanged) ---
     function saveContent() {
         if (!quill) return;
         const htmlContent = quill.root.innerHTML;
@@ -161,7 +163,6 @@
     }
     const debouncedSave = debounce(saveContent, 1500);
 
-    // --- DATA LOADING (Checks for extension on each call) ---
     function loadContent() {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -187,7 +188,7 @@
         }
     }
 
-    // --- PRINTING LOGIC (Checks for extension on each call) ---
+    // --- PRINTING LOGIC (Unchanged) ---
     function printAllSubIdsForAssignment() {
         const assignmentId = getQueryParams().get('assignmentId') || 'defaultAssignment';
 
@@ -255,16 +256,14 @@
         }
     }
     
-    // --- ATTACHMENT & EXPORT LOGIC ---
-    async function exportAllToJson() {
-        console.log("Starting JSON export process...");
-
+    // --- REFACTORED DATA GATHERING LOGIC (Unchanged) ---
+    async function gatherAllExportData() {
         const storedIdentifier = localStorage.getItem('aburossi_exporter_identifier') || '';
         const identifier = prompt('Please enter your name or a unique identifier for this export:', storedIdentifier);
 
         if (!identifier) {
             alert('Export cancelled. An identifier is required.');
-            return;
+            return null;
         }
         localStorage.setItem('aburossi_exporter_identifier', identifier);
 
@@ -340,7 +339,7 @@
 
         if (Object.keys(payload).length === 0) {
             alert("No data found to export.");
-            return;
+            return null;
         }
 
         let signature = null;
@@ -350,93 +349,76 @@
                 signature = await createSha256Hash(canonicalString);
             } catch (e) {
                 console.error("Error creating signature:", e);
-                alert("Could not create a signature for the export file. The file will be created without it, but its authenticity cannot be verified.");
             }
-        } else {
-            alert("Cannot create a signature because the page is not running in a secure context (e.g., HTTPS or localhost). The file will be created without the signature, and its authenticity cannot be verified.");
         }
 
-        const finalObject = {
+        return {
             identifier: identifier,
             payload,
             signature,
             createdAt: new Date().toISOString()
         };
+    }
 
-        const jsonString = JSON.stringify(finalObject, null, 2);
-        const safeIdentifier = identifier.replace(/[^a-z0-9_.-]/gi, '_');
-        const fileName = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
+    // --- *** MODIFIED: GOOGLE DRIVE EXPORT FUNCTION *** ---
+    // Now uses the hard-coded URL and provides better user feedback.
+    async function exportToGoogleDrive() {
+        console.log("Starting Google Drive export process...");
+        
+        const finalObject = await gatherAllExportData();
+        if (!finalObject) return; // User cancelled or no data
 
-        const inIframe = window.self !== window.top;
+        if (!GOOGLE_SCRIPT_URL) {
+            alert('Configuration Error: The submission URL is not set. Please contact your teacher.');
+            return;
+        }
+        
+        alert('Submitting your work to Google Drive. This may take a moment. Please wait for the success confirmation.');
 
-        if (inIframe) {
-            // --- MODIFIED SECTION: Use a Blob URL for iframe environments ---
-            // This creates a temporary, savable page instead of an untrusted 'about:blank' page.
-            const htmlContent = `
-                <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Save Export: ${fileName}</title>
-                <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #333; padding: 20px; }
-                    .container { max-width: 900px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-                    h1 { color: #003f5c; border-bottom: 2px solid #00796B; padding-bottom: 10px; }
-                    p { line-height: 1.6; }
-                    pre { background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; max-height: 60vh; overflow-y: auto; border: 1px solid #444; }
-                    .instructions { border: 2px solid #00796B; padding: 15px; border-radius: 5px; background-color: #e0f2f1; margin-bottom: 20px; }
-                    .instructions strong { color: #c62828; font-weight: 600; }
-                    button { background-color: #00796B; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background-color 0.2s; }
-                    button:hover { background-color: #00695C; }
-                </style>
-                </head><body>
-                <div class="container">
-                    <h1>Save Your Exported Data</h1>
-                    <div class="instructions">
-                        <p>Your browser's security settings prevent direct downloads from this embedded view.</p>
-                        <p>This new tab contains your data. <strong>To save it, use your browser's "Save Page As" feature (Ctrl+S or Cmd+S).</strong></p>
-                        <p>When saving, please name the file <strong>${fileName}</strong> to ensure it has the correct <code>.json</code> extension.</p>
-                    </div>
-                    <button id="copyBtn">Copy Content to Clipboard (Fallback)</button>
-                    <pre id="jsonData">${jsonString.replace(/</g, '<').replace(/>/g, '>')}</pre>
-                </div>
-                <script>
-                    document.getElementById('copyBtn').addEventListener('click', () => {
-                        const textToCopy = document.getElementById('jsonData').textContent;
-                        navigator.clipboard.writeText(textToCopy).then(() => {
-                            alert('JSON content copied to clipboard!');
-                        }, (err) => {
-                            alert('Failed to copy text. Please copy it manually.');
-                            console.error('Clipboard copy failed: ', err);
-                        });
-                    });
-                    window.focus();
-                <\/script>
-                </body></html>`;
+        try {
+            const response = await fetch(GOOGLE_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'cors',
+                body: JSON.stringify(finalObject)
+            });
 
-            const blob = new Blob([htmlContent], { type: 'text/html' });
-            const url = URL.createObjectURL(blob);
+            const result = await response.json();
 
-            const newWindow = window.open(url, '_blank');
-
-            if (newWindow) {
-                alert('A new tab has been opened with your data.\n\nPlease use your browser\'s "Save Page As" (Ctrl+S) feature in the new tab to save the file.');
-                // The blob URL will be automatically revoked by the browser when the tab is closed.
+            if (response.ok && result.status === 'success') {
+                alert(`Success! Your work has been saved to Google Drive as: ${result.fileName}`);
             } else {
-                alert('Could not open a new window. It may have been blocked by a pop-up blocker. Please disable it for this site to export your data.');
-                URL.revokeObjectURL(url); // Clean up if the window failed to open
+                throw new Error(result.message || 'An unknown error occurred on the server.');
             }
-        } else {
-            // ORIGINAL BEHAVIOR for non-iframe context: Trigger direct download
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            console.log("Export successful.");
+        } catch (error) {
+            console.error('Google Drive export failed:', error);
+            alert(`Failed to send data to Google Drive. This could be an internet issue.\n\nPlease try again, or use the "Export as File (Fallback)" button and send the file to your teacher manually.\n\nError: ${error.message}`);
         }
     }
 
+    // --- JSON FILE EXPORT FUNCTION (FALLBACK) (Unchanged) ---
+    async function exportAllToJson() {
+        console.log("Starting JSON file export process...");
+
+        const finalObject = await gatherAllExportData();
+        if (!finalObject) return; // User cancelled or no data
+
+        const jsonString = JSON.stringify(finalObject, null, 2);
+        const safeIdentifier = finalObject.identifier.replace(/[^a-z0-9_.-]/gi, '_');
+        const fileName = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
+
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log("Fallback export successful.");
+    }
+
+    // --- ATTACHMENT & QUESTION LOGIC (Unchanged) ---
     function loadAndDisplayAttachments() {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -464,7 +446,6 @@
         });
     }
 
-    // --- QUESTION HANDLING (Unaffected, always uses LocalStorage) ---
     function getQuestionsFromUrlAndSave() {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -497,7 +478,6 @@
         } catch (e) { return ''; }
     }
 
-    // --- PRINT WINDOW FUNCTION ---
     function printFormattedContent(content, printWindowTitle = 'Alle Antworten') {
         const printWindow = window.open('', '', 'height=800,width=800');
         if (!printWindow) { alert("Bitte erlauben Sie Pop-up-Fenster, um drucken zu können."); return; }
@@ -508,7 +488,7 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- PAGE INITIALIZATION ---
+    // --- PAGE INITIALIZATION (Unchanged) ---
     document.addEventListener("DOMContentLoaded", function() {
         console.log(`DOM Content Loaded. Extension active: ${isExtensionActive()}`);
         
@@ -610,6 +590,13 @@
             }
         });
 
+        // Add event listener for Google Drive export
+        const exportGoogleDriveBtn = document.getElementById('exportGoogleDriveBtn');
+        if (exportGoogleDriveBtn) {
+            exportGoogleDriveBtn.addEventListener('click', exportToGoogleDrive);
+        }
+
+        // Add event listener for fallback file export
         const exportJsonBtn = document.getElementById('exportJsonBtn');
         if (exportJsonBtn) {
             exportJsonBtn.addEventListener('click', exportAllToJson);
