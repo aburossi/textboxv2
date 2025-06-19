@@ -111,7 +111,7 @@
         if (savedText) { quill.root.innerHTML = savedText; }
     }
 
-    // --- FOCUSED DATA GATHERING LOGIC (for Submit/Print) ---
+    // --- FOCUSED DATA GATHERING LOGIC (for Submit/Print/Backup) ---
     async function gatherCurrentAssignmentData(promptForIdentifier = true) {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -180,7 +180,7 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** MODIFIED: SUBMISSION & BACKUP FUNCTION *** ---
+    // --- *** SUBMISSION & PRINT FUNCTIONS *** ---
     async function submitAssignment() {
         console.log("Starting assignment submission process...");
         const finalObject = await gatherCurrentAssignmentData(true);
@@ -202,20 +202,6 @@
                 const messageContainer = document.createElement('div');
                 messageContainer.innerHTML = `Deine Arbeit ist beim Lehrer angekommen und als <strong>${result.fileName}</strong> gespeichert.`;
                 alert(messageContainer.textContent);
-
-                // NEW: Ask to save a local backup of the submitted data
-                if (confirm("Möchten Sie eine lokale Backup-Kopie dieser Abgabe (JSON-Datei) speichern?")) {
-                    try {
-                        const jsonString = JSON.stringify(finalObject, null, 2);
-                        const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
-                        const timestamp = new Date().toISOString().slice(0, 10);
-                        const fileName = `abgabe-backup-${finalObject.identifier}-${timestamp}.json`;
-                        saveAs(blob, fileName);
-                    } catch (e) {
-                        console.error("Error creating local backup:", e);
-                        alert("Fehler beim Erstellen der lokalen Backup-Datei.");
-                    }
-                }
             } else {
                 throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
             }
@@ -225,7 +211,6 @@
         }
     }
 
-    // --- PRINT FUNCTION (Unchanged) ---
     async function printAssignment() {
         const data = await gatherCurrentAssignmentData(false);
         if (!data || !data.payload) return;
@@ -267,7 +252,28 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- *** MODIFIED: IMPORT & RESTORE FUNCTIONALITY *** ---
+    // --- *** LOCAL BACKUP & RESTORE FUNCTIONALITY *** ---
+    async function createLocalBackup() {
+        console.log("Starting local backup process...");
+        // Use the same data gathering logic as the submission to ensure format consistency.
+        const finalObject = await gatherCurrentAssignmentData(true); 
+        if (!finalObject) {
+            // gatherCurrentAssignmentData already shows alerts on failure
+            return;
+        }
+
+        try {
+            const jsonString = JSON.stringify(finalObject, null, 2);
+            const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
+            const timestamp = new Date().toISOString().slice(0, 10);
+            const fileName = `abgabe-backup-${finalObject.identifier}-${finalObject.assignmentId}-${timestamp}.json`;
+            saveAs(blob, fileName);
+        } catch (e) {
+            console.error("Error creating local backup:", e);
+            alert("Fehler beim Erstellen der lokalen Backup-Datei.");
+        }
+    }
+
     async function importLocalBackup(event) {
         const file = event.target.files[0];
         const importFileInput = document.getElementById('importFileInput');
@@ -287,10 +293,6 @@
         try {
             const jsonContent = await file.text();
             const importedData = JSON.parse(jsonContent);
-
-            // The new backup format contains a 'payload' object which holds the data.
-            // An older format might just be the data object itself.
-            // This line handles both cases gracefully.
             const dataToRestore = importedData.payload || importedData;
 
             if (typeof dataToRestore !== 'object' || dataToRestore === null) {
@@ -321,7 +323,7 @@
         return new Promise((resolve, reject) => {
             transaction.oncomplete = () => {
                 alert("Backup erfolgreich wiederhergestellt! Die Seite wird neu geladen, um die Änderungen anzuzeigen.");
-                window.location.reload(); // Reload to show the imported content
+                window.location.reload();
                 resolve();
             };
             transaction.onerror = (e) => {
@@ -447,6 +449,7 @@
         // Event Listeners for all buttons
         document.getElementById('submitAssignmentBtn')?.addEventListener('click', submitAssignment);
         document.getElementById('printAssignmentBtn')?.addEventListener('click', printAssignment);
+        document.getElementById('createLocalBackupBtn')?.addEventListener('click', createLocalBackup); // Listener for the new button
         
         const importBtn = document.getElementById('importLocalBackupBtn');
         const importFileInput = document.getElementById('importFileInput');
