@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Antworten speichern und drucken</title>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="printContent">
+        <div id="saveIndicator" style="opacity: 0; transition: opacity 0.5s;">Gespeichert</div>
+        <div id="subIdInfo" class="sub-id-info"></div>        
+        <div id="answerBox" class="quill-editor"></div>
+
+        <div class="attachments-section">
+            <h4>Attachments</h4>
+            <div class="file-input-wrapper">
+                <label for="file-attachment">Attach File:</label>
+                <input type="file" id="file-attachment" accept=".pdf,.txt,.docx,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+            </div>
+            <div id="current-attachments">
+                <p>No files attached.</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="button-container">
+    </div>
+    
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
