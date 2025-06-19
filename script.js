@@ -1,4 +1,4 @@
-// script.js - v12 (Phase 7: Restore Print & Refine Messages)
+// script.js - v13 (Phase 8: Add Local Backup for Iframe/Obsidian)
 
 (function() {
     'use strict';
@@ -8,17 +8,20 @@
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
+    const DB_NAME = 'allgemeinbildungDB';
+    const ATTACHMENT_STORE = 'attachments';
+    const BACKUP_FILENAME = 'aburossi_backup.json';
     let quill; // Global state for the editor
     let db; // Global state for the IndexedDB connection
 
     // --- Step 1.1: Set up the IndexedDB Database ---
     function initializeDB() {
-        const request = indexedDB.open('allgemeinbildungDB', 1);
+        const request = indexedDB.open(DB_NAME, 1);
 
         request.onupgradeneeded = function(event) {
             const db = event.target.result;
-            if (!db.objectStoreNames.contains('attachments')) {
-                const attachmentStore = db.createObjectStore('attachments', { keyPath: 'id', autoIncrement: true });
+            if (!db.objectStoreNames.contains(ATTACHMENT_STORE)) {
+                const attachmentStore = db.createObjectStore(ATTACHMENT_STORE, { keyPath: 'id', autoIncrement: true });
                 attachmentStore.createIndex('assignment_sub_idx', ['assignmentId', 'subId'], { unique: false });
             }
         };
@@ -34,11 +37,11 @@
         };
     }
 
-    // --- IndexedDB HELPER FUNCTIONS (Unchanged) ---
+    // --- IndexedDB HELPER FUNCTIONS ---
     function saveAttachment(attachment) {
         if (!db) return;
-        const transaction = db.transaction(['attachments'], 'readwrite');
-        const store = transaction.objectStore('attachments');
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readwrite');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
         const request = store.add(attachment);
         request.onsuccess = () => { console.log('Attachment saved.'); loadAndDisplayAttachments(); };
         request.onerror = (e) => console.error('Error saving attachment:', e.target.error);
@@ -46,8 +49,8 @@
 
     function getAttachments(assignmentId, subId, callback) {
         if (!db) return;
-        const transaction = db.transaction(['attachments'], 'readonly');
-        const store = transaction.objectStore('attachments');
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
         const index = store.index('assignment_sub_idx');
         const request = index.getAll([assignmentId, subId]);
         request.onsuccess = () => callback(request.result);
@@ -56,8 +59,8 @@
 
     function deleteAttachment(id) {
         if (!db) return;
-        const transaction = db.transaction(['attachments'], 'readwrite');
-        const store = transaction.objectStore('attachments');
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readwrite');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
         const request = store.delete(id);
         request.onsuccess = () => { console.log('Attachment deleted.'); loadAndDisplayAttachments(); };
         request.onerror = (e) => console.error('Error deleting attachment:', e.target.error);
@@ -65,8 +68,8 @@
 
     function getAllAttachmentsForAssignment(assignmentId, callback) {
         if (!db) return callback([]);
-        const transaction = db.transaction(['attachments'], 'readonly');
-        const store = transaction.objectStore('attachments');
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
         const request = store.getAll();
         request.onsuccess = function() {
             const filtered = (request.result || []).filter(att => att.assignmentId === assignmentId);
@@ -77,8 +80,8 @@
             callback([]);
         };
     }
-
-    // --- HELPER FUNCTIONS (Unchanged) ---
+    
+    // --- HELPER FUNCTIONS ---
     const isExtensionActive = () => document.documentElement.hasAttribute('data-extension-installed');
     function debounce(func, wait) { let timeout; return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); }; }
     const getQueryParams = () => new URLSearchParams(window.location.search);
@@ -87,7 +90,7 @@
     async function createSha256Hash(str) { const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-256', b); return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join(''); }
     function getCanonicalJSONString(data) { if (data === null || typeof data !== 'object') return JSON.stringify(data); if (Array.isArray(data)) return `[${data.map(getCanonicalJSONString).join(',')}]`; const k = Object.keys(data).sort(); const p = k.map(key => `${JSON.stringify(key)}:${getCanonicalJSONString(data[key])}`); return `{${p.join(',')}}`; }
 
-    // --- DATA SAVING & LOADING (Unchanged) ---
+    // --- DATA SAVING & LOADING ---
     function saveContent() {
         if (!quill) return;
         const htmlContent = quill.root.innerHTML;
@@ -119,7 +122,7 @@
         }
     }
 
-    // --- FOCUSED DATA GATHERING LOGIC (Unchanged) ---
+    // --- FOCUSED DATA GATHERING LOGIC (for Submit/Print) ---
     async function gatherCurrentAssignmentData(promptForIdentifier = true) {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -188,40 +191,27 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** MODIFIED: SUBMISSION FUNCTION *** ---
+    // --- SUBMISSION & PRINT FUNCTIONS ---
     async function submitAssignment() {
         console.log("Starting assignment submission process...");
-        
-        const finalObject = await gatherCurrentAssignmentData(true); // true = prompt for identifier
+        const finalObject = await gatherCurrentAssignmentData(true);
         if (!finalObject) return;
-
         if (!GOOGLE_SCRIPT_URL) {
             alert('Konfigurationsfehler: Die Abgabe-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
             return;
         }
-        
         const confirmation = confirm("Du bist dabei, alle gespeicherten Aufträge für dieses Kapitel an deinen Lehrer zu senden. Fortfahren?");
         if (!confirmation) {
             alert("Abgabe abgebrochen.");
             return;
         }
-
         alert('Deine Arbeit wird an Google Drive übermittelt. Dies kann einen Moment dauern. Bitte warte auf die Erfolgsbestätigung.');
-
         try {
-            const response = await fetch(GOOGLE_SCRIPT_URL, {
-                method: 'POST',
-                mode: 'cors',
-                body: JSON.stringify(finalObject)
-            });
-
+            const response = await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'cors', body: JSON.stringify(finalObject) });
             const result = await response.json();
-
             if (response.ok && result.status === 'success') {
-                // Create a temporary element to display the styled message
                 const messageContainer = document.createElement('div');
                 messageContainer.innerHTML = `Deine Arbeit ist beim Lehrer angekommen und als <strong>${result.fileName}</strong> gespeichert.`;
-                // Use a simple alert to show the message. For a styled modal, a library would be better.
                 alert(messageContainer.textContent);
             } else {
                 throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
@@ -232,23 +222,18 @@
         }
     }
 
-    // --- *** NEW: PRINT FUNCTION *** ---
     async function printAssignment() {
-        const data = await gatherCurrentAssignmentData(false); // false = don't prompt for identifier
+        const data = await gatherCurrentAssignmentData(false);
         if (!data || !data.payload) return;
-
         const assignmentId = data.assignmentId;
         const assignmentData = data.payload[assignmentId];
         const assignmentSuffix = assignmentId.includes('_') ? assignmentId.substring(assignmentId.indexOf('_') + 1) : assignmentId;
-
         const sortedSubIds = Object.keys(assignmentData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-        
         let allContent = `<h2>${assignmentSuffix}</h2>`;
         sortedSubIds.forEach((subId, index) => {
             const subData = assignmentData[subId];
             const answerContent = subData.answer;
             const questions = subData.questions;
-
             let questionsHtml = '';
             if (questions && Object.keys(questions).length > 0) {
                 const sortedKeys = Object.keys(questions).sort((a, b) => (parseInt(a.replace('question', ''), 10) - parseInt(b.replace('question', ''), 10)));
@@ -256,7 +241,6 @@
                 sortedKeys.forEach(qKey => { questionsHtml += `<li>${parseMarkdown(questions[qKey])}</li>`; });
                 questionsHtml += '</ol></div>';
             }
-
             if (questionsHtml || answerContent) {
                 const blockClass = 'sub-assignment-block' + (index > 0 ? ' new-page' : '');
                 allContent += `<div class="${blockClass}">`;
@@ -266,7 +250,6 @@
                 allContent += `</div>`;
             }
         });
-
         printFormattedContent(allContent, `Druckansicht: ${assignmentSuffix}`);
     }
 
@@ -280,7 +263,74 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- ATTACHMENT & QUESTION LOGIC (Unchanged) ---
+    // --- *** NEW: LOCAL BACKUP FUNCTIONALITY (for Iframe/Obsidian) *** ---
+    
+    // Helper function to get ALL attachments from IndexedDB
+    function getAllDataFromDB(callback) {
+        if (!db) return callback([]);
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
+        const request = store.getAll();
+        request.onsuccess = () => callback(request.result || []);
+        request.onerror = (e) => {
+            console.error('Error fetching all attachments for backup:', e.target.error);
+            callback([]);
+        };
+    }
+
+    // Helper function to process ALL data from localStorage and IndexedDB
+    function processAllDataForBackup(attachments) {
+        const dataStore = {};
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            let isAnswerKey = key.startsWith(STORAGE_PREFIX);
+            let isQuestionKey = key.startsWith(QUESTIONS_PREFIX);
+            if (isAnswerKey || isQuestionKey) {
+                const prefix = isAnswerKey ? STORAGE_PREFIX : QUESTIONS_PREFIX;
+                const keyParts = key.substring(prefix.length).split(`_${SUB_STORAGE_PREFIX}`);
+                if (keyParts.length !== 2) continue;
+                const [assignmentId, subId] = keyParts;
+                if (!dataStore[assignmentId]) dataStore[assignmentId] = {};
+                if (!dataStore[assignmentId][subId]) dataStore[assignmentId][subId] = { answer: '', questions: {}, attachments: [] };
+                if (isAnswerKey) {
+                    dataStore[assignmentId][subId].answer = localStorage.getItem(key);
+                } else if (isQuestionKey) {
+                    try {
+                        dataStore[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
+                    } catch (e) { console.error(`Error parsing questions for ${key}:`, e); }
+                }
+            }
+        }
+        attachments.forEach(att => {
+            if (dataStore[att.assignmentId] && dataStore[att.assignmentId][att.subId]) {
+                dataStore[att.assignmentId][att.subId].attachments.push(att);
+            }
+        });
+        return dataStore;
+    }
+
+    // Main function to create and download the backup
+    async function createLocalBackup() {
+        alert("Lokales Backup aller Daten wird erstellt. Dies kann einen Moment dauern.");
+        try {
+            const attachments = await new Promise(resolve => getAllDataFromDB(resolve));
+            const dataStore = processAllDataForBackup(attachments);
+            if (Object.keys(dataStore).length === 0) {
+                alert("Keine Daten zum Sichern gefunden.");
+                return;
+            }
+            const zip = new JSZip();
+            zip.file(BACKUP_FILENAME, JSON.stringify(dataStore, null, 2));
+            const content = await zip.generateAsync({ type: "blob" });
+            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+            saveAs(content, `allgemeinbildung-backup-${timestamp}.zip`);
+        } catch (error) {
+            console.error("Backup-Fehler:", error);
+            alert("Ein Fehler ist beim Erstellen des Backups aufgetreten.");
+        }
+    }
+
+    // --- ATTACHMENT & QUESTION LOGIC ---
     function loadAndDisplayAttachments() {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -392,17 +442,9 @@
             }
         });
 
-        // Add event listener for the main submission button
-        const submitBtn = document.getElementById('submitAssignmentBtn');
-        if (submitBtn) {
-            submitBtn.addEventListener('click', submitAssignment);
-        }
-
-        // Add event listener for the print button
-        const printBtn = document.getElementById('printAssignmentBtn');
-        if (printBtn) {
-            printBtn.addEventListener('click', printAssignment);
-        }
+        document.getElementById('submitAssignmentBtn')?.addEventListener('click', submitAssignment);
+        document.getElementById('printAssignmentBtn')?.addEventListener('click', printAssignment);
+        document.getElementById('createLocalBackupBtn')?.addEventListener('click', createLocalBackup); // Listener for the new button
     });
 
 })();
