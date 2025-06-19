@@ -363,7 +363,6 @@
             createdAt: new Date().toISOString()
         };
 
-        // --- MODIFIED EXPORT/SAVE LOGIC ---
         const jsonString = JSON.stringify(finalObject, null, 2);
         const safeIdentifier = identifier.replace(/[^a-z0-9_.-]/gi, '_');
         const fileName = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
@@ -371,55 +370,60 @@
         const inIframe = window.self !== window.top;
 
         if (inIframe) {
-            // WORKAROUND for iframe environments that block downloads
-            const newWindow = window.open('', '_blank');
-            if (newWindow) {
-                newWindow.document.title = `Save Export: ${fileName}`;
-                newWindow.document.write(`
-                    <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Save Export: ${fileName}</title>
-                    <style>
-                        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #333; padding: 20px; }
-                        .container { max-width: 900px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-                        h1 { color: #003f5c; border-bottom: 2px solid #00796B; padding-bottom: 10px; }
-                        p { line-height: 1.6; }
-                        pre { background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; max-height: 60vh; overflow-y: auto; border: 1px solid #444; }
-                        .instructions { border: 2px solid #00796B; padding: 15px; border-radius: 5px; background-color: #e0f2f1; margin-bottom: 20px; }
-                        .instructions strong { color: #c62828; font-weight: 600; }
-                        button { background-color: #00796B; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background-color 0.2s; }
-                        button:hover { background-color: #00695C; }
-                    </style>
-                    </head><body>
-                    <div class="container">
-                        <h1>Save Your Exported Data</h1>
-                        <div class="instructions">
-                            <p>To save your data, please use your browser's "Save Page As" feature.</p>
-                            <p><strong>Press Ctrl+S (on Windows/Linux) or Cmd+S (on Mac) now.</strong></p>
-                            <p>When prompted, ensure the file name is <strong>${fileName}</strong> and save it. You may need to manually rename the saved file to end in ".json".</p>
-                            <p>Alternatively, use the button below to copy the content and paste it into a new file.</p>
-                        </div>
-                        <button id="copyBtn">Copy Content to Clipboard</button>
-                        <pre id="jsonData">${jsonString.replace(/</g, '<').replace(/>/g, '>')}</pre>
+            // --- MODIFIED SECTION: Use a Blob URL for iframe environments ---
+            // This creates a temporary, savable page instead of an untrusted 'about:blank' page.
+            const htmlContent = `
+                <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Save Export: ${fileName}</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #333; padding: 20px; }
+                    .container { max-width: 900px; margin: 20px auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+                    h1 { color: #003f5c; border-bottom: 2px solid #00796B; padding-bottom: 10px; }
+                    p { line-height: 1.6; }
+                    pre { background: #2d2d2d; color: #f1f1f1; padding: 15px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; max-height: 60vh; overflow-y: auto; border: 1px solid #444; }
+                    .instructions { border: 2px solid #00796B; padding: 15px; border-radius: 5px; background-color: #e0f2f1; margin-bottom: 20px; }
+                    .instructions strong { color: #c62828; font-weight: 600; }
+                    button { background-color: #00796B; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background-color 0.2s; }
+                    button:hover { background-color: #00695C; }
+                </style>
+                </head><body>
+                <div class="container">
+                    <h1>Save Your Exported Data</h1>
+                    <div class="instructions">
+                        <p>Your browser's security settings prevent direct downloads from this embedded view.</p>
+                        <p>This new tab contains your data. <strong>To save it, use your browser's "Save Page As" feature (Ctrl+S or Cmd+S).</strong></p>
+                        <p>When saving, please name the file <strong>${fileName}</strong> to ensure it has the correct <code>.json</code> extension.</p>
                     </div>
-                    <script>
-                        document.getElementById('copyBtn').addEventListener('click', () => {
-                            const textToCopy = document.getElementById('jsonData').textContent;
-                            navigator.clipboard.writeText(textToCopy).then(() => {
-                                alert('JSON content copied to clipboard!');
-                            }, (err) => {
-                                alert('Failed to copy text. Please copy it manually.');
-                                console.error('Clipboard copy failed: ', err);
-                            });
+                    <button id="copyBtn">Copy Content to Clipboard (Fallback)</button>
+                    <pre id="jsonData">${jsonString.replace(/</g, '<').replace(/>/g, '>')}</pre>
+                </div>
+                <script>
+                    document.getElementById('copyBtn').addEventListener('click', () => {
+                        const textToCopy = document.getElementById('jsonData').textContent;
+                        navigator.clipboard.writeText(textToCopy).then(() => {
+                            alert('JSON content copied to clipboard!');
+                        }, (err) => {
+                            alert('Failed to copy text. Please copy it manually.');
+                            console.error('Clipboard copy failed: ', err);
                         });
-                        window.focus();
-                    <\/script>
-                    </body></html>`);
-                newWindow.document.close();
-                alert('Export cannot be downloaded automatically from this embedded view.\n\nA new tab has been opened. Please follow the instructions there to save your file.');
+                    });
+                    window.focus();
+                <\/script>
+                </body></html>`;
+
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+
+            const newWindow = window.open(url, '_blank');
+
+            if (newWindow) {
+                alert('A new tab has been opened with your data.\n\nPlease use your browser\'s "Save Page As" (Ctrl+S) feature in the new tab to save the file.');
+                // The blob URL will be automatically revoked by the browser when the tab is closed.
             } else {
                 alert('Could not open a new window. It may have been blocked by a pop-up blocker. Please disable it for this site to export your data.');
+                URL.revokeObjectURL(url); // Clean up if the window failed to open
             }
         } else {
-            // ORIGINAL BEHAVIOR: Trigger direct download
+            // ORIGINAL BEHAVIOR for non-iframe context: Trigger direct download
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
