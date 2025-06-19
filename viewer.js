@@ -172,7 +172,7 @@
         });
     }
 
-    // --- BACKUP & RESTORE LOGIC (MODIFIED) ---
+    // --- BACKUP & RESTORE LOGIC (Unchanged) ---
     async function exportBackup() {
         alert("Backup wird erstellt. Dies kann einen Moment dauern.");
         try {
@@ -233,6 +233,7 @@
         }
     }
 
+    // --- *** MODIFIED FUNCTION *** ---
     async function restoreDataFromStoreObject(dataStore) {
         // This function now contains the core restoration logic
         await clearAllData(true); // Clear existing data silently
@@ -251,8 +252,14 @@
                 }
                 if (subData.attachments) {
                     subData.attachments.forEach(att => {
-                        const { id, ...attachmentData } = att;
-                        store.add(attachmentData);
+                        // FIX: The attachment object 'att' from the backup includes its original 'id'.
+                        // Since the object store was cleared before this operation, we can
+                        // add the attachment back with its original 'id' without conflicts.
+                        // The previous implementation, which tried to remove the 'id' before adding,
+                        // was causing the transaction to fail. Adding the object as-is is more reliable.
+                        if (att) { // Add a safety check for null/undefined entries
+                           store.add(att);
+                        }
                     });
                 }
             }
