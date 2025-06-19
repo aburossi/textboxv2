@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <title>Meine gespeicherten Arbeiten</title>
     <link rel="stylesheet" href="viewer.css">
+    <!-- Add JSZip and FileSaver libraries for backup/restore functionality -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 </head>
 <body>
     <div id="app">
@@ -14,8 +17,12 @@
 
         <div class="button-container">
             <button id="reloadDataBtn">Daten neu laden</button>
+            <button id="exportBackupBtn">Backup erstellen (ZIP)</button>
+            <button id="importBackupBtn">Backup einspielen</button>
             <button id="clearAllDataBtn">Alle gespeicherten Daten löschen</button>
         </div>
+        <!-- Hidden file input for the import process -->
+        <input type="file" id="importFileInput" accept=".zip" style="display: none;">
 
         <div id="data-container">
             <p class="loading-message">Lade Daten...</p>
