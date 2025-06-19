@@ -13,6 +13,8 @@
             --valid-text: #0f5132;
             --invalid-bg: #f8d7da;
             --invalid-text: #842029;
+            --unverified-bg: #fff3cd;
+            --unverified-text: #664d03;
             --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         }
         body {
@@ -101,15 +103,23 @@
         }
         .status-valid { color: var(--valid-text); }
         .status-invalid { color: var(--invalid-text); }
+        .status-unverified { color: var(--unverified-text); }
         .content-body {
             padding: 1.5rem;
+        }
+        .invalid-file-message, .unverified-file-message {
+            padding: 1rem;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 1rem;
         }
         .invalid-file-message {
             background-color: var(--invalid-bg);
             color: var(--invalid-text);
-            padding: 1rem;
-            border-radius: 4px;
-            font-weight: bold;
+        }
+        .unverified-file-message {
+            background-color: var(--unverified-bg);
+            color: var(--unverified-text);
         }
         details {
             border: 1px solid var(--border-color);
@@ -140,7 +150,6 @@
         .answer-content p {
             margin-top: 0;
         }
-        /* Step 2.3: Styles for attachments */
         .attachments-display {
             margin-top: 1rem;
             padding-top: 1rem;
@@ -220,11 +229,28 @@
                 reader.onload = async (event) => {
                     try {
                         const parsedData = JSON.parse(event.target.result);
-                        if (!parsedData.payload || !parsedData.signature) {
-                            resolve({ fileName: file.name, isValid: false, payload: null, error: "Invalid file structure." });
+                        if (!parsedData.payload || !parsedData.hasOwnProperty('signature')) {
+                            resolve({ fileName: file.name, isValid: false, payload: null, error: "Invalid file structure: Missing 'payload' or 'signature'." });
                             return;
                         }
-                        const { payload, signature: storedSignature } = parsedData;
+                        const { payload, signature: storedSignature, createdAt } = parsedData;
+
+                        if (storedSignature === null) {
+                            resolve({
+                                fileName: file.name, isValid: null, payload: payload, createdAt: new Date(createdAt),
+                                error: "This file was created without a signature, so its authenticity cannot be verified."
+                            });
+                            return;
+                        }
+
+                        if (!window.crypto || !window.crypto.subtle) {
+                            resolve({
+                                fileName: file.name, isValid: null, payload: payload, createdAt: new Date(createdAt),
+                                error: "Cannot verify signature because this page is not in a secure context (HTTPS or localhost)."
+                            });
+                            return;
+                        }
+
                         const canonicalString = getCanonicalJSONString(payload);
                         const calculatedSignature = await createSha256Hash(canonicalString);
 
@@ -232,7 +258,8 @@
                             fileName: file.name,
                             isValid: calculatedSignature === storedSignature,
                             payload: payload,
-                            createdAt: new Date(parsedData.createdAt)
+                            createdAt: new Date(createdAt),
+                            error: calculatedSignature === storedSignature ? null : "File is corrupt or has been tampered with."
                         });
                     } catch (e) {
                         resolve({ fileName: file.name, isValid: false, payload: null, error: "Not a valid JSON file." });
@@ -245,7 +272,6 @@
         // --- UI Rendering & Population ---
 
         function populateFilters() {
-            // Student Filter
             studentFilterList.innerHTML = '';
             const uniqueStudents = new Set(allLoadedData.map(d => d.fileName));
             uniqueStudents.forEach(fileName => {
@@ -260,18 +286,17 @@
                 studentFilterList.appendChild(label);
             });
 
-            // Assignment Filter
             assignmentSelect.innerHTML = '';
             const allAssignments = new Set();
             allLoadedData.forEach(data => {
-                if (data.isValid && data.payload) {
+                if (data.payload) {
                     Object.keys(data.payload).forEach(assignmentId => allAssignments.add(assignmentId));
                 }
             });
 
             const allOption = new Option('-- All Assignments --', 'all');
             assignmentSelect.add(allOption);
-            allAssignments.forEach(id => assignmentSelect.add(new Option(id, id)));
+            Array.from(allAssignments).sort().forEach(id => assignmentSelect.add(new Option(id, id)));
             assignmentSelect.addEventListener('change', renderContent);
         }
 
@@ -287,17 +312,22 @@
                 const studentContainer = document.createElement('div');
                 studentContainer.className = 'student-container';
                 
-                const statusClass = data.isValid ? 'status-valid' : 'status-invalid';
-                const statusIcon = data.isValid ? '✅' : '❌';
+                let statusClass, statusIcon;
+                if (data.isValid === true) { statusClass = 'status-valid'; statusIcon = '✅'; } 
+                else if (data.isValid === false) { statusClass = 'status-invalid'; statusIcon = '❌'; } 
+                else { statusClass = 'status-unverified'; statusIcon = '⚠️'; }
 
                 studentContainer.innerHTML = `<div class="student-header ${statusClass}">${statusIcon} ${data.fileName}</div>`;
                 
                 const contentBody = document.createElement('div');
                 contentBody.className = 'content-body';
 
-                if (!data.isValid) {
-                    contentBody.innerHTML = `<div class="invalid-file-message">This file is corrupt or has been tampered with.</div>`;
-                } else {
+                if (data.error) {
+                    const messageClass = data.isValid === false ? 'invalid-file-message' : 'unverified-file-message';
+                    contentBody.innerHTML = `<div class="${messageClass}">${data.error}</div>`;
+                }
+
+                if (data.payload) {
                     Object.keys(data.payload).sort().forEach(assignmentId => {
                         if (selectedAssignment !== 'all' && selectedAssignment !== assignmentId) return;
 
@@ -311,15 +341,12 @@
                             const subPayload = data.payload[assignmentId][subId];
                             
                             subDetails.innerHTML = `<summary>${subId}</summary>`;
-                            
                             const subContent = document.createElement('div');
                             subContent.className = 'details-content';
 
                             if (subPayload.questions && Object.keys(subPayload.questions).length > 0) {
                                 let questionsHtml = '<ol class="questions-list">';
-                                Object.values(subPayload.questions).forEach(q => {
-                                    questionsHtml += `<li>${q}</li>`;
-                                });
+                                Object.values(subPayload.questions).forEach(q => { questionsHtml += `<li>${q}</li>`; });
                                 questionsHtml += '</ol>';
                                 subContent.innerHTML += questionsHtml;
                             }
@@ -331,12 +358,10 @@
                                 subContent.appendChild(answerDiv);
                             }
                             
-                            // Step 2.3: Update the Verifier to display attachments
                             if (subPayload.attachments && Array.isArray(subPayload.attachments) && subPayload.attachments.length > 0) {
                                 const attachmentsDiv = document.createElement('div');
                                 attachmentsDiv.className = 'attachments-display';
                                 attachmentsDiv.innerHTML = `<h5>Attachments:</h5>`;
-
                                 subPayload.attachments.forEach(att => {
                                     if (att.fileType && att.fileType.startsWith('image/')) {
                                         const img = document.createElement('img');
@@ -372,11 +397,12 @@
         async function handleFiles(files) {
             allLoadedData = await Promise.all(Array.from(files).map(verifyAndParseFile));
             
-            const validCount = allLoadedData.filter(f => f.isValid).length;
-            const invalidCount = allLoadedData.length - validCount;
+            const validCount = allLoadedData.filter(f => f.isValid === true).length;
+            const invalidCount = allLoadedData.filter(f => f.isValid === false).length;
+            const unverifiedCount = allLoadedData.filter(f => f.isValid === null).length;
             
             summaryPanel.style.display = 'block';
-            summaryPanel.innerHTML = `Loaded ${allLoadedData.length} file(s). <span class="status-valid">${validCount} authentic</span>, <span class="status-invalid">${invalidCount} tampered or invalid</span>.`;
+            summaryPanel.innerHTML = `Loaded ${allLoadedData.length} file(s). <span class="status-valid">${validCount} authentic</span>, <span class="status-invalid">${invalidCount} invalid</span>, <span class="status-unverified">${unverifiedCount} unverified</span>.`;
 
             if (allLoadedData.length > 0) {
                 filtersContainer.style.display = 'grid';
