@@ -266,14 +266,17 @@
                 window.dispatchEvent(new CustomEvent('ab-get-all-request'));
             } else {
                 const allData = {};
+                const subPrefix = `_${SUB_STORAGE_PREFIX}`;
                 for (let i = 0; i < localStorage.length; i++) {
                     const key = localStorage.key(i);
-                    if (key && key.startsWith(STORAGE_PREFIX)) {
+                    if (key && key.startsWith(STORAGE_PREFIX) && key.includes(subPrefix)) {
                         const value = localStorage.getItem(key);
-                        const keyParts = key.replace(STORAGE_PREFIX, '').split(`_${SUB_STORAGE_PREFIX}`);
-                        if (keyParts.length === 2) {
-                            const newKey = `${keyParts[0]}|${keyParts[1]}`;
-                            allData[newKey] = value;
+                        const strippedKey = key.substring(STORAGE_PREFIX.length);
+                        const lastIndex = strippedKey.lastIndexOf(subPrefix);
+                        if (lastIndex > -1) {
+                            const assignmentId = strippedKey.substring(0, lastIndex);
+                            const subId = strippedKey.substring(lastIndex + subPrefix.length);
+                            allData[`${assignmentId}|${subId}`] = value;
                         }
                     }
                 }
@@ -291,11 +294,8 @@
 
         // 4. Structure the data into a payload
         const payload = {};
-
         const ensurePath = (assignmentId, subId) => {
-            if (!payload[assignmentId]) {
-                payload[assignmentId] = {};
-            }
+            if (!payload[assignmentId]) payload[assignmentId] = {};
             if (!payload[assignmentId][subId]) {
                 payload[assignmentId][subId] = { questions: {}, answer: null, attachments: [] };
             }
@@ -309,12 +309,15 @@
         }
 
         // 6. Process questions from localStorage (always)
+        const subPrefix = `_${SUB_STORAGE_PREFIX}`;
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (key && key.startsWith(QUESTIONS_PREFIX)) {
-                const keyParts = key.replace(QUESTIONS_PREFIX, '').split(`_${SUB_STORAGE_PREFIX}`);
-                if (keyParts.length === 2) {
-                    const [assignmentId, subId] = keyParts;
+            if (key && key.startsWith(QUESTIONS_PREFIX) && key.includes(subPrefix)) {
+                const strippedKey = key.substring(QUESTIONS_PREFIX.length);
+                const lastIndex = strippedKey.lastIndexOf(subPrefix);
+                if (lastIndex > -1) {
+                    const assignmentId = strippedKey.substring(0, lastIndex);
+                    const subId = strippedKey.substring(lastIndex + subPrefix.length);
                     ensurePath(assignmentId, subId);
                     try {
                         payload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
@@ -339,8 +342,19 @@
         }
 
         // 8. Create signature and final object
-        const canonicalString = getCanonicalJSONString(payload);
-        const signature = await createSha256Hash(canonicalString);
+        let signature = null;
+        if (window.crypto && window.crypto.subtle) {
+            try {
+                const canonicalString = getCanonicalJSONString(payload);
+                signature = await createSha256Hash(canonicalString);
+            } catch (e) {
+                console.error("Error creating signature:", e);
+                alert("Could not create a signature for the export file. The file will be created without it, but its authenticity cannot be verified.");
+            }
+        } else {
+            alert("Cannot create a signature because the page is not running in a secure context (e.g., HTTPS or localhost). The file will be created without the signature, and its authenticity cannot be verified.");
+        }
+
         const finalObject = {
             payload,
             signature,
