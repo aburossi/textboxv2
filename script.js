@@ -1,4 +1,4 @@
-// script.js - v6 (Phase 2: JSON Export) - Patched
+// script.js - v6 (Phase 2: JSON Export)
 
 (function() {
     'use strict';
@@ -76,24 +76,6 @@
         };
         request.onerror = function(event) {
             console.error('Error deleting attachment:', event.target.error);
-        };
-    }
-
-    function getAttachmentsForAssignment(assignmentId, callback) {
-        if (!db) return callback([]);
-        const transaction = db.transaction(['attachments'], 'readonly');
-        const store = transaction.objectStore('attachments');
-        const index = store.index('assignment_sub_idx');
-        // Use a key range to get all entries for the given assignmentId
-        const range = IDBKeyRange.bound([assignmentId, ''], [assignmentId, '\uffff']);
-        const request = index.getAll(range);
-
-        request.onsuccess = function() {
-            callback(request.result || []);
-        };
-        request.onerror = function(event) {
-            console.error('Error fetching attachments for assignment:', event.target.error);
-            callback([]);
         };
     }
 
@@ -242,8 +224,8 @@
                 }
             }
             if (subIdSet.size === 0) {
-                alert("Keine gespeicherten Themen für dieses Kapitel gefunden.");
-                return;
+                 alert("Keine gespeicherten Themen für dieses Kapitel gefunden.");
+                 return;
             }
 
             const sortedSubIds = Array.from(subIdSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
@@ -272,201 +254,138 @@
             processAndPrint(localStorage, false);
         }
     }
-
+    
     // --- ATTACHMENT & EXPORT LOGIC ---
     async function exportAllToJson() {
         console.log("Starting JSON export process...");
-        try {
-            // Get identifier from user, with a stored default
-            const storedIdentifier = localStorage.getItem('aburossi_exporter_identifier') || '';
-            const identifier = prompt('Please enter your name or a unique identifier for this export:', storedIdentifier);
 
-            if (!identifier) {
-                alert('Export cancelled. An identifier is required.');
-                return;
-            }
-            // Save the identifier for next time
-            localStorage.setItem('aburossi_exporter_identifier', identifier);
+        // Get identifier from user, with a stored default
+        const storedIdentifier = localStorage.getItem('aburossi_exporter_identifier') || '';
+        const identifier = prompt('Please enter your name or a unique identifier for this export:', storedIdentifier);
 
-            // 1. Get answers (from extension or localStorage)
-            const answersPromise = new Promise(resolve => {
-                if (isExtensionActive()) {
-                    window.addEventListener('ab-get-all-response', e => resolve(e.detail.allData || {}), { once: true });
-                    window.dispatchEvent(new CustomEvent('ab-get-all-request'));
-                } else {
-                    const allData = {};
-                    const subPrefix = `_${SUB_STORAGE_PREFIX}`;
-                    for (let i = 0; i < localStorage.length; i++) {
-                        const key = localStorage.key(i);
-                        if (key && key.startsWith(STORAGE_PREFIX) && key.includes(subPrefix)) {
-                            const value = localStorage.getItem(key);
-                            const strippedKey = key.substring(STORAGE_PREFIX.length);
-                            const lastIndex = strippedKey.lastIndexOf(subPrefix);
-                            if (lastIndex > -1) {
-                                const assignmentId = strippedKey.substring(0, lastIndex);
-                                const subId = strippedKey.substring(lastIndex + subPrefix.length);
-                                allData[`${assignmentId}|${subId}`] = value;
-                            }
+        if (!identifier) {
+            alert('Export cancelled. An identifier is required.');
+            return;
+        }
+        // Save the identifier for next time
+        localStorage.setItem('aburossi_exporter_identifier', identifier);
+
+        // 1. Get answers (from extension or localStorage)
+        const answersPromise = new Promise(resolve => {
+            if (isExtensionActive()) {
+                window.addEventListener('ab-get-all-response', e => resolve(e.detail.allData || {}), { once: true });
+                window.dispatchEvent(new CustomEvent('ab-get-all-request'));
+            } else {
+                const allData = {};
+                const subPrefix = `_${SUB_STORAGE_PREFIX}`;
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith(STORAGE_PREFIX) && key.includes(subPrefix)) {
+                        const value = localStorage.getItem(key);
+                        const strippedKey = key.substring(STORAGE_PREFIX.length);
+                        const lastIndex = strippedKey.lastIndexOf(subPrefix);
+                        if (lastIndex > -1) {
+                            const assignmentId = strippedKey.substring(0, lastIndex);
+                            const subId = strippedKey.substring(lastIndex + subPrefix.length);
+                            allData[`${assignmentId}|${subId}`] = value;
                         }
                     }
-                    resolve(allData);
                 }
-            });
-
-            // 2. Get all attachments from IndexedDB
-            const attachmentsPromise = new Promise(resolve => {
-                getAllAttachments(attachments => resolve(attachments));
-            });
-
-            // 3. Wait for both to complete
-            console.log("Fetching data...");
-            const [answersData, allAttachments] = await Promise.all([answersPromise, attachmentsPromise]);
-            console.log(`Fetched ${Object.keys(answersData).length} answers and ${allAttachments.length} attachments.`);
-
-            // 4. Structure the data into a payload
-            const payload = {};
-            const ensurePath = (assignmentId, subId) => {
-                if (!payload[assignmentId]) payload[assignmentId] = {};
-                if (!payload[assignmentId][subId]) {
-                    payload[assignmentId][subId] = { questions: {}, answer: null, attachments: [] };
-                }
-            };
-
-            // 5. Process answers
-            for (const key in answersData) {
-                const [assignmentId, subId] = key.split('|');
-                ensurePath(assignmentId, subId);
-                payload[assignmentId][subId].answer = answersData[key];
+                resolve(allData);
             }
+        });
 
-            // 6. Process questions from localStorage (always)
-            const subPrefix = `_${SUB_STORAGE_PREFIX}`;
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith(QUESTIONS_PREFIX) && key.includes(subPrefix)) {
-                    const strippedKey = key.substring(QUESTIONS_PREFIX.length);
-                    const lastIndex = strippedKey.lastIndexOf(subPrefix);
-                    if (lastIndex > -1) {
-                        const assignmentId = strippedKey.substring(0, lastIndex);
-                        const subId = strippedKey.substring(lastIndex + subPrefix.length);
-                        ensurePath(assignmentId, subId);
-                        try {
-                            payload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
-                        } catch (e) { console.error("Error parsing questions for export", e); }
-                    }
-                }
+        // 2. Get all attachments from IndexedDB
+        const attachmentsPromise = new Promise(resolve => {
+            getAllAttachments(attachments => resolve(attachments));
+        });
+
+        // 3. Wait for both to complete
+        const [answersData, allAttachments] = await Promise.all([answersPromise, attachmentsPromise]);
+
+        // 4. Structure the data into a payload
+        const payload = {};
+        const ensurePath = (assignmentId, subId) => {
+            if (!payload[assignmentId]) payload[assignmentId] = {};
+            if (!payload[assignmentId][subId]) {
+                payload[assignmentId][subId] = { questions: {}, answer: null, attachments: [] };
             }
+        };
 
-            // 7. Process attachments
-            allAttachments.forEach(att => {
-                ensurePath(att.assignmentId, att.subId);
-                payload[att.assignmentId][att.subId].attachments.push({
-                    fileName: att.fileName,
-                    fileType: att.fileType,
-                    data: att.data
-                });
-            });
-
-            if (Object.keys(payload).length === 0) {
-                alert("No data found to export.");
-                return;
-            }
-
-            // 8. Create signature and final object
-            let signature = null;
-            if (window.crypto && window.crypto.subtle) {
-                try {
-                    const canonicalString = getCanonicalJSONString(payload);
-                    signature = await createSha256Hash(canonicalString);
-                } catch (e) {
-                    console.error("Error creating signature:", e);
-                    alert("Could not create a signature for the export file. The file will be created without it, but its authenticity cannot be verified.");
-                }
-            } else {
-                alert("Cannot create a signature because the page is not running in a secure context (e.g., HTTPS or localhost). The file will be created without the signature, and its authenticity cannot be verified.");
-            }
-
-            const finalObject = {
-                identifier: identifier,
-                payload,
-                signature,
-                createdAt: new Date().toISOString()
-            };
-
-            // 9. Trigger download
-            console.log("Preparing file for download...");
-            const jsonString = JSON.stringify(finalObject, null, 2);
-            const blob = new Blob([jsonString], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            const safeIdentifier = identifier.replace(/[^a-z0-9_.-]/gi, '_');
-            a.download = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            console.log("Export successful.");
-        } catch (error) {
-            console.error("A critical error occurred during the JSON export process:", error);
-            alert("An unexpected error occurred while exporting to JSON. Please check the browser console for details.");
+        // 5. Process answers
+        for (const key in answersData) {
+            const [assignmentId, subId] = key.split('|');
+            ensurePath(assignmentId, subId);
+            payload[assignmentId][subId].answer = answersData[key];
         }
-    }
 
-    async function downloadAttachmentsAsZip() {
-        try {
-            if (typeof JSZip === 'undefined') {
-                alert('JSZip library not loaded. Cannot create ZIP file.');
-                return;
-            }
-
-            const params = getQueryParams();
-            const assignmentId = params.get('assignmentId');
-            if (!assignmentId) {
-                alert('No assignment ID found in the URL.');
-                return;
-            }
-
-            // Promisify the callback-based getAttachmentsForAssignment function
-            const attachments = await new Promise((resolve) => {
-                getAttachmentsForAssignment(assignmentId, (result) => resolve(result || []));
-            });
-
-            if (attachments.length === 0) {
-                alert('No attachments found for this assignment.');
-                return;
-            }
-
-            console.log(`Found ${attachments.length} attachments for assignment '${assignmentId}'. Zipping...`);
-            const zip = new JSZip();
-
-            attachments.forEach(att => {
-                if (att.data && typeof att.data === 'string' && att.data.includes(',')) {
-                    const base64Data = att.data.substring(att.data.indexOf(',') + 1);
-                    const fullPath = `${att.subId}/${att.fileName}`;
-                    zip.file(fullPath, base64Data, { base64: true });
-                } else {
-                    console.warn(`Skipping attachment with invalid data format: ${att.fileName}`);
+        // 6. Process questions from localStorage (always)
+        const subPrefix = `_${SUB_STORAGE_PREFIX}`;
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(QUESTIONS_PREFIX) && key.includes(subPrefix)) {
+                const strippedKey = key.substring(QUESTIONS_PREFIX.length);
+                const lastIndex = strippedKey.lastIndexOf(subPrefix);
+                if (lastIndex > -1) {
+                    const assignmentId = strippedKey.substring(0, lastIndex);
+                    const subId = strippedKey.substring(lastIndex + subPrefix.length);
+                    ensurePath(assignmentId, subId);
+                    try {
+                        payload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
+                    } catch (e) { console.error("Error parsing questions for export", e); }
                 }
-            });
-
-            const blob = await zip.generateAsync({ type: "blob" });
-
-            console.log('ZIP file generated. Triggering download...');
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${assignmentId}_attachments.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            console.log('Download of ZIP triggered successfully.');
-
-        } catch (error) {
-            console.error("An error occurred while creating the ZIP file:", error);
-            alert("An error occurred while creating the ZIP file. Please check the browser console for details.");
+            }
         }
+
+        // 7. Process attachments
+        allAttachments.forEach(att => {
+            ensurePath(att.assignmentId, att.subId);
+            payload[att.assignmentId][att.subId].attachments.push({
+                fileName: att.fileName,
+                fileType: att.fileType,
+                data: att.data
+            });
+        });
+
+        if (Object.keys(payload).length === 0) {
+            alert("No data found to export.");
+            return;
+        }
+
+        // 8. Create signature and final object
+        let signature = null;
+        if (window.crypto && window.crypto.subtle) {
+            try {
+                const canonicalString = getCanonicalJSONString(payload);
+                signature = await createSha256Hash(canonicalString);
+            } catch (e) {
+                console.error("Error creating signature:", e);
+                alert("Could not create a signature for the export file. The file will be created without it, but its authenticity cannot be verified.");
+            }
+        } else {
+            alert("Cannot create a signature because the page is not running in a secure context (e.g., HTTPS or localhost). The file will be created without the signature, and its authenticity cannot be verified.");
+        }
+
+        const finalObject = {
+            identifier: identifier,
+            payload,
+            signature,
+            createdAt: new Date().toISOString()
+        };
+
+        // 9. Trigger download
+        const jsonString = JSON.stringify(finalObject, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const safeIdentifier = identifier.replace(/[^a-z0-9_.-]/gi, '_');
+        a.download = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log("Export successful.");
     }
 
     function loadAndDisplayAttachments() {
@@ -646,12 +565,6 @@
         const exportJsonBtn = document.getElementById('exportJsonBtn');
         if (exportJsonBtn) {
             exportJsonBtn.addEventListener('click', exportAllToJson);
-        }
-
-        // --- Attach event listener for the new attachments download button ---
-        const downloadAttachmentsBtn = document.getElementById('downloadAttachmentsBtn');
-        if (downloadAttachmentsBtn) {
-            downloadAttachmentsBtn.addEventListener('click', downloadAttachmentsAsZip);
         }
     });
 
