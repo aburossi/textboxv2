@@ -259,6 +259,17 @@
     async function exportAllToJson() {
         console.log("Starting JSON export process...");
 
+        // Get identifier from user, with a stored default
+        const storedIdentifier = localStorage.getItem('aburossi_exporter_identifier') || '';
+        const identifier = prompt('Please enter your name or a unique identifier for this export:', storedIdentifier);
+
+        if (!identifier) {
+            alert('Export cancelled. An identifier is required.');
+            return;
+        }
+        // Save the identifier for next time
+        localStorage.setItem('aburossi_exporter_identifier', identifier);
+
         // 1. Get answers (from extension or localStorage)
         const answersPromise = new Promise(resolve => {
             if (isExtensionActive()) {
@@ -356,6 +367,7 @@
         }
 
         const finalObject = {
+            identifier: identifier,
             payload,
             signature,
             createdAt: new Date().toISOString()
@@ -367,7 +379,8 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `allgemeinbildung_export_${new Date().toISOString().split('T')[0]}.json`;
+        const safeIdentifier = identifier.replace(/[^a-z0-9_.-]/gi, '_');
+        a.download = `allgemeinbildung_export_${safeIdentifier}_${new Date().toISOString().split('T')[0]}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

@@ -230,14 +230,18 @@
                     try {
                         const parsedData = JSON.parse(event.target.result);
                         if (!parsedData.payload || !parsedData.hasOwnProperty('signature')) {
-                            resolve({ fileName: file.name, isValid: false, payload: null, error: "Invalid file structure: Missing 'payload' or 'signature'." });
+                            resolve({ fileName: file.name, identifier: file.name, isValid: false, payload: null, error: "Invalid file structure: Missing 'payload' or 'signature'." });
                             return;
                         }
-                        const { payload, signature: storedSignature, createdAt } = parsedData;
+                        const { payload, signature: storedSignature, createdAt, identifier } = parsedData;
 
                         if (storedSignature === null) {
                             resolve({
-                                fileName: file.name, isValid: null, payload: payload, createdAt: new Date(createdAt),
+                                fileName: file.name,
+                                identifier: identifier || file.name,
+                                isValid: null,
+                                payload: payload,
+                                createdAt: new Date(createdAt),
                                 error: "This file was created without a signature, so its authenticity cannot be verified."
                             });
                             return;
@@ -245,7 +249,11 @@
 
                         if (!window.crypto || !window.crypto.subtle) {
                             resolve({
-                                fileName: file.name, isValid: null, payload: payload, createdAt: new Date(createdAt),
+                                fileName: file.name,
+                                identifier: identifier || file.name,
+                                isValid: null,
+                                payload: payload,
+                                createdAt: new Date(createdAt),
                                 error: "Cannot verify signature because this page is not in a secure context (HTTPS or localhost)."
                             });
                             return;
@@ -256,13 +264,14 @@
 
                         resolve({
                             fileName: file.name,
+                            identifier: identifier || file.name,
                             isValid: calculatedSignature === storedSignature,
                             payload: payload,
                             createdAt: new Date(createdAt),
                             error: calculatedSignature === storedSignature ? null : "File is corrupt or has been tampered with."
                         });
                     } catch (e) {
-                        resolve({ fileName: file.name, isValid: false, payload: null, error: "Not a valid JSON file." });
+                        resolve({ fileName: file.name, identifier: file.name, isValid: false, payload: null, error: "Not a valid JSON file." });
                     }
                 };
                 reader.readAsText(file);
@@ -273,16 +282,16 @@
 
         function populateFilters() {
             studentFilterList.innerHTML = '';
-            const uniqueStudents = new Set(allLoadedData.map(d => d.fileName));
-            uniqueStudents.forEach(fileName => {
+            const uniqueStudents = new Set(allLoadedData.map(d => d.identifier));
+            uniqueStudents.forEach(identifier => {
                 const label = document.createElement('label');
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.value = fileName;
+                checkbox.value = identifier;
                 checkbox.checked = true;
                 checkbox.addEventListener('change', renderContent);
                 label.appendChild(checkbox);
-                label.append(` ${fileName}`);
+                label.append(` ${identifier}`);
                 studentFilterList.appendChild(label);
             });
 
@@ -306,7 +315,7 @@
             const selectedStudents = Array.from(studentFilterList.querySelectorAll('input:checked')).map(cb => cb.value);
             const selectedAssignment = assignmentSelect.value;
             
-            const dataToRender = allLoadedData.filter(d => selectedStudents.includes(d.fileName));
+            const dataToRender = allLoadedData.filter(d => selectedStudents.includes(d.identifier));
 
             dataToRender.forEach(data => {
                 const studentContainer = document.createElement('div');
@@ -317,7 +326,7 @@
                 else if (data.isValid === false) { statusClass = 'status-invalid'; statusIcon = '❌'; } 
                 else { statusClass = 'status-unverified'; statusIcon = '⚠️'; }
 
-                studentContainer.innerHTML = `<div class="student-header ${statusClass}">${statusIcon} ${data.fileName}</div>`;
+                studentContainer.innerHTML = `<div class="student-header ${statusClass}">${statusIcon} ${data.identifier}</div>`;
                 
                 const contentBody = document.createElement('div');
                 contentBody.className = 'content-body';
