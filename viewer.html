@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Meine gespeicherten Arbeiten</title>
+    <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>Meine gespeicherten Arbeiten</h1>
+            <p>Hier siehst du alle deine Antworten und Anhänge, die lokal in deinem Browser gespeichert sind.</p>
+        </header>
+
+        <div class="button-container">
+            <button id="reloadDataBtn">Daten neu laden</button>
+            <button id="clearAllDataBtn">Alle gespeicherten Daten löschen</button>
+        </div>
+
+        <div id="data-container">
+            <p class="loading-message">Lade Daten...</p>
+        </div>
+    </div>
+
+    <script src="viewer.js"></script>
+</body>
+</html>

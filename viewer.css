@@ -1,0 +1,182 @@
+/* viewer.css */
+:root {
+    --bg-color: #f4f6f8;
+    --text-color: #333;
+    --header-bg: #ffffff;
+    --container-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --primary-color: #003f5c;
+    --secondary-color: #2f4b7c;
+    --danger-color: #d32f2f;
+    --danger-hover-color: #b71c1c;
+    --shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 0;
+}
+
+#app {
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 20px;
+}
+
+header {
+    background-color: var(--header-bg);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    text-align: center;
+    border: 1px solid var(--border-color);
+}
+
+header h1 {
+    color: var(--primary-color);
+    margin: 0 0 10px 0;
+}
+
+.button-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 1em;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    color: white;
+}
+
+#reloadDataBtn {
+    background-color: var(--secondary-color);
+}
+
+#reloadDataBtn:hover {
+    background-color: #4a698a;
+}
+
+#clearAllDataBtn {
+    background-color: var(--danger-color);
+}
+
+#clearAllDataBtn:hover {
+    background-color: var(--danger-hover-color);
+}
+
+.loading-message, .no-data-message, .error-message {
+    text-align: center;
+    font-size: 1.2em;
+    color: #666;
+    padding: 40px;
+    background-color: var(--container-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+details {
+    background-color: var(--container-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 15px;
+    box-shadow: var(--shadow);
+}
+
+summary {
+    padding: 15px;
+    font-weight: bold;
+    font-size: 1.2em;
+    cursor: pointer;
+    outline: none;
+    color: var(--primary-color);
+}
+
+details[open] > summary {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.sub-container {
+    margin: 10px 15px;
+    border-color: #f0f0f0;
+    background-color: #fafafa;
+}
+
+.sub-container summary {
+    font-size: 1.1em;
+    color: var(--secondary-color);
+}
+
+.sub-content {
+    padding: 15px;
+    border-top: 1px solid #e8e8e8;
+}
+
+.questions-list {
+    padding-left: 20px;
+    margin-bottom: 15px;
+    background-color: #eef2f5;
+    padding: 10px 10px 10px 30px;
+    border-radius: 5px;
+}
+
+.questions-list li {
+    margin-bottom: 5px;
+    line-height: 1.4;
+}
+
+.answer-content, .attachments-display {
+    margin-top: 15px;
+}
+
+.answer-content h4, .attachments-display h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #555;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+/* Styles for the rendered Quill content */
+.answer-content {
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: #fff;
+    line-height: 1.6;
+}
+.answer-content p {
+    margin-top: 0;
+}
+.answer-content ol, .answer-content ul {
+    padding-left: 20px;
+}
+
+.attachments-display img {
+    max-width: 200px;
+    max-height: 200px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-right: 10px;
+    margin-bottom: 10px;
+    object-fit: cover;
+}
+
+.attachments-display a {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--secondary-color);
+    text-decoration: none;
+}
+
+.attachments-display a:hover {
+    text-decoration: underline;
+}
