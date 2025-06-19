@@ -1,4 +1,4 @@
-<!-- FILE: answers.html (Updated) -->
+<!-- FILE: answers.html (Updated & Final) -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -13,7 +13,7 @@
         <div id="subIdInfo" class="sub-id-info"></div>        
         <div id="answerBox" class="quill-editor"></div>
 
-        <div class="attachments-section">
+    <div class="attachments-section">
             <h4>Attachments</h4>
             <div class="file-input-wrapper">
                 <label for="file-attachment">Attach File:</label>
@@ -24,16 +24,15 @@
             </div>
         </div>
     </div>
-    
+
     <div class="button-container">
         <button id="submitAssignmentBtn">Alle Aufträge abgeben</button>
         <button id="printAssignmentBtn">Alle Aufträge drucken</button>
-        <button id="createLocalBackupBtn" style="background-color: #00796B;">Lokales Backup erstellen</button>
-        <button id="importLocalBackupBtn" style="background-color: #f57c00;">Backup einspielen</button> <!-- NEW BUTTON -->
+        <button id="importLocalBackupBtn" style="background-color: #f57c00;">Backup einspielen</button>
     </div>
-    
-    <!-- Hidden file input for the import process -->
-    <input type="file" id="importFileInput" accept=".zip,.json" style="display: none;">
+
+    <!-- Hidden file input for the import process, now accepts only .json -->
+    <input type="file" id="importFileInput" accept=".json" style="display: none;">
 
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>

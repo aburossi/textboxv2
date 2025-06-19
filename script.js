@@ -10,7 +10,6 @@
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
     const DB_NAME = 'allgemeinbildungDB';
     const ATTACHMENT_STORE = 'attachments';
-    const BACKUP_FILENAME = 'aburossi_backup.json';
     let quill; // Global state for the editor
     let db; // Global state for the IndexedDB connection
 
@@ -80,7 +79,7 @@
             callback([]);
         };
     }
-    
+
     // --- HELPER FUNCTIONS ---
     function debounce(func, wait) { let timeout; return function(...args) { clearTimeout(timeout); timeout = setTimeout(() => func.apply(this, args), wait); }; }
     const getQueryParams = () => new URLSearchParams(window.location.search);
@@ -181,7 +180,7 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** RESTORED: SUBMISSION & PRINT FUNCTIONS *** ---
+    // --- *** MODIFIED: SUBMISSION & BACKUP FUNCTION *** ---
     async function submitAssignment() {
         console.log("Starting assignment submission process...");
         const finalObject = await gatherCurrentAssignmentData(true);
@@ -203,6 +202,20 @@
                 const messageContainer = document.createElement('div');
                 messageContainer.innerHTML = `Deine Arbeit ist beim Lehrer angekommen und als <strong>${result.fileName}</strong> gespeichert.`;
                 alert(messageContainer.textContent);
+
+                // NEW: Ask to save a local backup of the submitted data
+                if (confirm("Möchten Sie eine lokale Backup-Kopie dieser Abgabe (JSON-Datei) speichern?")) {
+                    try {
+                        const jsonString = JSON.stringify(finalObject, null, 2);
+                        const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
+                        const timestamp = new Date().toISOString().slice(0, 10);
+                        const fileName = `abgabe-backup-${finalObject.identifier}-${timestamp}.json`;
+                        saveAs(blob, fileName);
+                    } catch (e) {
+                        console.error("Error creating local backup:", e);
+                        alert("Fehler beim Erstellen der lokalen Backup-Datei.");
+                    }
+                }
             } else {
                 throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
             }
@@ -212,6 +225,7 @@
         }
     }
 
+    // --- PRINT FUNCTION (Unchanged) ---
     async function printAssignment() {
         const data = await gatherCurrentAssignmentData(false);
         if (!data || !data.payload) return;
@@ -253,93 +267,42 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- *** LOCAL BACKUP & RESTORE FUNCTIONALITY (FOR OBSIDIAN) *** ---
-    
-    function getAllDataFromDB(callback) {
-        if (!db) return callback([]);
-        const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
-        const store = transaction.objectStore(ATTACHMENT_STORE);
-        const request = store.getAll();
-        request.onsuccess = () => callback(request.result || []);
-        request.onerror = (e) => { console.error('Error fetching all attachments for backup:', e.target.error); callback([]); };
-    }
-
-    function processAllDataForBackup(attachments) {
-        const dataStore = {};
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith(STORAGE_PREFIX) || key.startsWith(QUESTIONS_PREFIX)) {
-                const prefix = key.startsWith(STORAGE_PREFIX) ? STORAGE_PREFIX : QUESTIONS_PREFIX;
-                const keyParts = key.substring(prefix.length).split(`_${SUB_STORAGE_PREFIX}`);
-                if (keyParts.length !== 2) continue;
-                const [assignmentId, subId] = keyParts;
-                if (!dataStore[assignmentId]) dataStore[assignmentId] = {};
-                if (!dataStore[assignmentId][subId]) dataStore[assignmentId][subId] = { answer: '', questions: {}, attachments: [] };
-                if (key.startsWith(STORAGE_PREFIX)) {
-                    dataStore[assignmentId][subId].answer = localStorage.getItem(key);
-                } else {
-                    try { dataStore[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key)); } catch (e) { console.error(`Error parsing questions for ${key}:`, e); }
-                }
-            }
-        }
-        attachments.forEach(att => {
-            const { assignmentId, subId } = att;
-            if (!dataStore[assignmentId]) dataStore[assignmentId] = {};
-            if (!dataStore[assignmentId][subId]) dataStore[assignmentId][subId] = { answer: '', questions: {}, attachments: [] };
-            dataStore[assignmentId][subId].attachments.push(att);
-        });
-        return dataStore;
-    }
-
-    async function createLocalBackup() {
-        alert("Lokales Backup aller Daten wird erstellt. Dies kann einen Moment dauern.");
-        try {
-            const attachments = await new Promise(resolve => getAllDataFromDB(resolve));
-            const dataStore = processAllDataForBackup(attachments);
-            if (Object.keys(dataStore).length === 0 && attachments.length === 0) {
-                alert("Keine Daten zum Sichern gefunden.");
-                return;
-            }
-            const zip = new JSZip();
-            zip.file(BACKUP_FILENAME, JSON.stringify(dataStore, null, 2));
-            const content = await zip.generateAsync({ type: "blob" });
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-            saveAs(content, `allgemeinbildung-backup-${timestamp}.zip`);
-        } catch (error) {
-            console.error("Backup-Fehler:", error);
-            alert("Ein Fehler ist beim Erstellen des Backups aufgetreten.");
-        }
-    }
-
+    // --- *** MODIFIED: IMPORT & RESTORE FUNCTIONALITY *** ---
     async function importLocalBackup(event) {
         const file = event.target.files[0];
         const importFileInput = document.getElementById('importFileInput');
         if (!file) return;
-        if (!confirm("WARNUNG: Das Einspielen eines Backups löscht ALLE aktuell in diesem Kontext (z.B. Obsidian) gespeicherten Daten und ersetzt sie. Fortfahren?")) {
-            if(importFileInput) importFileInput.value = '';
+
+        if (!file.name.endsWith('.json')) {
+            alert("Ungültiger Dateityp. Bitte eine .json Backup-Datei auswählen.");
+            if (importFileInput) importFileInput.value = '';
             return;
         }
+
+        if (!confirm("WARNUNG: Das Einspielen eines Backups löscht ALLE aktuell in diesem Kontext (z.B. Obsidian) gespeicherten Daten und ersetzt sie. Fortfahren?")) {
+            if (importFileInput) importFileInput.value = '';
+            return;
+        }
+
         try {
-            let jsonContent;
-            if (file.name.endsWith('.zip')) {
-                const zip = await JSZip.loadAsync(file);
-                const backupFile = zip.file(BACKUP_FILENAME);
-                if (!backupFile) { alert(`Fehler: Die ZIP-Datei enthält nicht die erwartete Datei '${BACKUP_FILENAME}'.`); if(importFileInput) importFileInput.value = ''; return; }
-                jsonContent = await backupFile.async("string");
-            } else if (file.name.endsWith('.json')) {
-                jsonContent = await file.text();
-            } else {
-                alert("Ungültiger Dateityp. Bitte eine .zip oder .json Backup-Datei auswählen.");
-                if(importFileInput) importFileInput.value = '';
-                return;
+            const jsonContent = await file.text();
+            const importedData = JSON.parse(jsonContent);
+
+            // The new backup format contains a 'payload' object which holds the data.
+            // An older format might just be the data object itself.
+            // This line handles both cases gracefully.
+            const dataToRestore = importedData.payload || importedData;
+
+            if (typeof dataToRestore !== 'object' || dataToRestore === null) {
+                throw new Error("Die JSON-Datei hat nicht das erwartete Format.");
             }
-            const dataStore = JSON.parse(jsonContent);
-            await restoreDataFromStoreObject(dataStore);
+
+            await restoreDataFromStoreObject(dataToRestore);
         } catch (error) {
             console.error("Import-Fehler:", error);
-            alert("Ein Fehler ist beim Einspielen des Backups aufgetreten. Die Datei ist möglicherweise beschädigt oder hat ein falsches Format.");
+            alert(`Ein Fehler ist beim Einspielen des Backups aufgetreten. Die Datei ist möglicherweise beschädigt oder hat ein falsches Format.\n\nFehler: ${error.message}`);
         } finally {
-            if(importFileInput) importFileInput.value = '';
+            if (importFileInput) importFileInput.value = '';
         }
     }
 
@@ -362,9 +325,9 @@
                 resolve();
             };
             transaction.onerror = (e) => {
-                 console.error("Fehler bei der Wiederherstellung der Anhänge:", e.target.error);
-                 alert("Die Wiederherstellung ist fehlgeschlagen. Fehler beim Schreiben in die Datenbank.");
-                 reject(e.target.error);
+                console.error("Fehler bei der Wiederherstellung der Anhänge:", e.target.error);
+                alert("Die Wiederherstellung ist fehlgeschlagen. Fehler beim Schreiben in die Datenbank.");
+                reject(e.target.error);
             };
         });
     }
@@ -484,7 +447,6 @@
         // Event Listeners for all buttons
         document.getElementById('submitAssignmentBtn')?.addEventListener('click', submitAssignment);
         document.getElementById('printAssignmentBtn')?.addEventListener('click', printAssignment);
-        document.getElementById('createLocalBackupBtn')?.addEventListener('click', createLocalBackup);
         
         const importBtn = document.getElementById('importLocalBackupBtn');
         const importFileInput = document.getElementById('importFileInput');
