@@ -1,4 +1,4 @@
-// script.js - v13 (Phase 8: Add Local Backup for Iframe/Obsidian)
+// script.js - v14 (Phase 9: Add Local Import for Iframe/Obsidian)
 
 (function() {
     'use strict';
@@ -263,41 +263,32 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- *** NEW: LOCAL BACKUP FUNCTIONALITY (for Iframe/Obsidian) *** ---
+    // --- *** NEW: LOCAL BACKUP & RESTORE FUNCTIONALITY (for Iframe/Obsidian) *** ---
     
-    // Helper function to get ALL attachments from IndexedDB
     function getAllDataFromDB(callback) {
         if (!db) return callback([]);
         const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
         const store = transaction.objectStore(ATTACHMENT_STORE);
         const request = store.getAll();
         request.onsuccess = () => callback(request.result || []);
-        request.onerror = (e) => {
-            console.error('Error fetching all attachments for backup:', e.target.error);
-            callback([]);
-        };
+        request.onerror = (e) => { console.error('Error fetching all attachments for backup:', e.target.error); callback([]); };
     }
 
-    // Helper function to process ALL data from localStorage and IndexedDB
     function processAllDataForBackup(attachments) {
         const dataStore = {};
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            let isAnswerKey = key.startsWith(STORAGE_PREFIX);
-            let isQuestionKey = key.startsWith(QUESTIONS_PREFIX);
-            if (isAnswerKey || isQuestionKey) {
-                const prefix = isAnswerKey ? STORAGE_PREFIX : QUESTIONS_PREFIX;
+            if (key.startsWith(STORAGE_PREFIX) || key.startsWith(QUESTIONS_PREFIX)) {
+                const prefix = key.startsWith(STORAGE_PREFIX) ? STORAGE_PREFIX : QUESTIONS_PREFIX;
                 const keyParts = key.substring(prefix.length).split(`_${SUB_STORAGE_PREFIX}`);
                 if (keyParts.length !== 2) continue;
                 const [assignmentId, subId] = keyParts;
                 if (!dataStore[assignmentId]) dataStore[assignmentId] = {};
                 if (!dataStore[assignmentId][subId]) dataStore[assignmentId][subId] = { answer: '', questions: {}, attachments: [] };
-                if (isAnswerKey) {
+                if (key.startsWith(STORAGE_PREFIX)) {
                     dataStore[assignmentId][subId].answer = localStorage.getItem(key);
-                } else if (isQuestionKey) {
-                    try {
-                        dataStore[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
-                    } catch (e) { console.error(`Error parsing questions for ${key}:`, e); }
+                } else {
+                    try { dataStore[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key)); } catch (e) { console.error(`Error parsing questions for ${key}:`, e); }
                 }
             }
         }
@@ -309,7 +300,6 @@
         return dataStore;
     }
 
-    // Main function to create and download the backup
     async function createLocalBackup() {
         alert("Lokales Backup aller Daten wird erstellt. Dies kann einen Moment dauern.");
         try {
@@ -328,6 +318,89 @@
             console.error("Backup-Fehler:", error);
             alert("Ein Fehler ist beim Erstellen des Backups aufgetreten.");
         }
+    }
+
+    async function importLocalBackup(event) {
+        const file = event.target.files[0];
+        const importFileInput = document.getElementById('importFileInput');
+        if (!file) return;
+        if (!confirm("WARNUNG: Das Einspielen eines Backups löscht ALLE aktuell in diesem Kontext (z.B. Obsidian) gespeicherten Daten und ersetzt sie. Fortfahren?")) {
+            if(importFileInput) importFileInput.value = '';
+            return;
+        }
+        try {
+            let jsonContent;
+            if (file.name.endsWith('.zip')) {
+                const zip = await JSZip.loadAsync(file);
+                const backupFile = zip.file(BACKUP_FILENAME);
+                if (!backupFile) { alert(`Fehler: Die ZIP-Datei enthält nicht die erwartete Datei '${BACKUP_FILENAME}'.`); if(importFileInput) importFileInput.value = ''; return; }
+                jsonContent = await backupFile.async("string");
+            } else if (file.name.endsWith('.json')) {
+                jsonContent = await file.text();
+            } else {
+                alert("Ungültiger Dateityp. Bitte eine .zip oder .json Backup-Datei auswählen.");
+                if(importFileInput) importFileInput.value = '';
+                return;
+            }
+            const dataStore = JSON.parse(jsonContent);
+            await restoreDataFromStoreObject(dataStore);
+        } catch (error) {
+            console.error("Import-Fehler:", error);
+            alert("Ein Fehler ist beim Einspielen des Backups aufgetreten. Die Datei ist möglicherweise beschädigt oder hat ein falsches Format.");
+        } finally {
+            if(importFileInput) importFileInput.value = '';
+        }
+    }
+
+    async function restoreDataFromStoreObject(dataStore) {
+        await clearAllData(true); // Clear existing data silently
+        const transaction = db.transaction([ATTACHMENT_STORE], 'readwrite');
+        const store = transaction.objectStore(ATTACHMENT_STORE);
+        for (const assignmentId in dataStore) {
+            for (const subId in dataStore[assignmentId]) {
+                const subData = dataStore[assignmentId][subId];
+                if (subData.answer) localStorage.setItem(`${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, subData.answer);
+                if (subData.questions && Object.keys(subData.questions).length > 0) localStorage.setItem(`${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, JSON.stringify(subData.questions));
+                if (subData.attachments) subData.attachments.forEach(att => { if (att) store.add(att); });
+            }
+        }
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = () => {
+                alert("Backup erfolgreich wiederhergestellt! Die Seite wird neu geladen, um die Änderungen anzuzeigen.");
+                window.location.reload(); // Reload to show the imported content
+                resolve();
+            };
+            transaction.onerror = (e) => {
+                 console.error("Fehler bei der Wiederherstellung der Anhänge:", e.target.error);
+                 alert("Die Wiederherstellung ist fehlgeschlagen. Fehler beim Schreiben in die Datenbank.");
+                 reject(e.target.error);
+            };
+        });
+    }
+
+    async function clearAllData(silent = false) {
+        if (!silent) {
+            if (!confirm("Bist du absolut sicher, dass du ALLE gespeicherten Arbeiten und Anhänge in diesem Kontext löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.")) return;
+            if (!confirm("Letzte Warnung: Wirklich ALLE Daten löschen?")) return;
+        }
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith('textbox-')) keysToRemove.push(key);
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        return new Promise((resolve, reject) => {
+            if (!db) {
+                if (!silent) alert("Alle Textantworten wurden gelöscht. Die Datenbank für Anhänge war nicht erreichbar.");
+                resolve();
+                return;
+            }
+            const transaction = db.transaction([ATTACHMENT_STORE], 'readwrite');
+            const store = transaction.objectStore(ATTACHMENT_STORE);
+            const request = store.clear();
+            request.onsuccess = () => { if (!silent) alert("Alle Daten wurden erfolgreich gelöscht."); resolve(); };
+            request.onerror = (e) => { if (!silent) alert("Fehler beim Löschen der Anhänge."); reject(e.target.error); };
+        });
     }
 
     // --- ATTACHMENT & QUESTION LOGIC ---
@@ -361,9 +434,7 @@
         const questions = {};
         params.forEach((value, key) => { if (key.startsWith('question')) questions[key] = value; });
         if (Object.keys(questions).length > 0) {
-            try {
-                localStorage.setItem(`${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, JSON.stringify(questions));
-            } catch (e) { console.error("Error saving questions:", e); }
+            try { localStorage.setItem(`${QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`, JSON.stringify(questions)); } catch (e) { console.error("Error saving questions:", e); }
         }
         return { subId, questions };
     }
@@ -442,9 +513,15 @@
             }
         });
 
+        // Event Listeners for all buttons
         document.getElementById('submitAssignmentBtn')?.addEventListener('click', submitAssignment);
         document.getElementById('printAssignmentBtn')?.addEventListener('click', printAssignment);
-        document.getElementById('createLocalBackupBtn')?.addEventListener('click', createLocalBackup); // Listener for the new button
+        document.getElementById('createLocalBackupBtn')?.addEventListener('click', createLocalBackup);
+        
+        const importBtn = document.getElementById('importLocalBackupBtn');
+        const importFileInput = document.getElementById('importFileInput');
+        importBtn?.addEventListener('click', () => importFileInput.click());
+        importFileInput?.addEventListener('change', importLocalBackup);
     });
 
 })();
