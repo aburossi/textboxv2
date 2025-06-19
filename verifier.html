@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Bulk JSON Verifier & Viewer</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --text-color: #212529;
+            --border-color: #dee2e6;
+            --primary-color: #003f5c;
+            --valid-bg: #d1e7dd;
+            --valid-text: #0f5132;
+            --invalid-bg: #f8d7da;
+            --invalid-text: #842029;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 1rem;
+        }
+        #drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            background-color: #fff;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+        #drop-zone.dragover {
+            background-color: #e9ecef;
+            border-color: var(--primary-color);
+        }
+        #summary-panel {
+            margin-top: 1.5rem;
+            padding: 1rem;
+            border-radius: 8px;
+            background-color: #fff;
+            box-shadow: var(--shadow);
+            text-align: center;
+            font-size: 1.1em;
+        }
+        #filters-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+        }
+        #filters-container h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+        #student-filter-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        #student-filter-list label {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+        #assignment-filter select {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+        #content-display {
+            margin-top: 2rem;
+        }
+        .student-container {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        .student-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .status-valid { color: var(--valid-text); }
+        .status-invalid { color: var(--invalid-text); }
+        .content-body {
+            padding: 1.5rem;
+        }
+        .invalid-file-message {
+            background-color: var(--invalid-bg);
+            color: var(--invalid-text);
+            padding: 1rem;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        details {
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        details summary {
+            padding: 0.75rem 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            background-color: #f8f9fa;
+        }
+        details[open] summary {
+            border-bottom: 1px solid var(--border-color);
+        }
+        .details-content {
+            padding: 1rem 1.5rem;
+        }
+        .questions-list {
+            padding-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .answer-content {
+            border-top: 1px dashed var(--border-color);
+            padding-top: 1rem;
+            margin-top: 1rem;
+        }
+        .answer-content p {
+            margin-top: 0;
+        }
+        /* Step 2.3: Styles for attachments */
+        .attachments-display {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px dashed var(--border-color);
+        }
+        .attachments-display h5 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+        }
+        .attachments-display img {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+        .attachments-display a {
+            display: block;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Bulk Verifier & Viewer</h1>
+        <p>Drop one or more student <code>.json</code> files here to verify authenticity and review the content.</p>
+    </header>
+    
+    <div id="drop-zone">Drag & Drop Files Here</div>
+    
+    <div id="summary-panel" style="display: none;"></div>
+    
+    <div id="filters-container" style="display: none;">
+        <div>
+            <h3>Filter by Student</h3>
+            <div id="student-filter-list"></div>
+        </div>
+        <div id="assignment-filter">
+            <h3>Filter by Assignment</h3>
+            <select id="assignment-select"></select>
+        </div>
+    </div>
+    
+    <div id="content-display"></div>
+
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const summaryPanel = document.getElementById('summary-panel');
+        const filtersContainer = document.getElementById('filters-container');
+        const studentFilterList = document.getElementById('student-filter-list');
+        const assignmentSelect = document.getElementById('assignment-select');
+        const contentDisplay = document.getElementById('content-display');
+
+        let allLoadedData = [];
+
+        // --- Core Logic (Verification & Hashing) ---
+
+        async function createSha256Hash(str) {
+            const textAsBuffer = new TextEncoder().encode(str);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', textAsBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        
+        function getCanonicalJSONString(data) {
+            if (data === null || typeof data !== 'object') return JSON.stringify(data);
+            if (Array.isArray(data)) return `[${data.map(getCanonicalJSONString).join(',')}]`;
+            const sortedKeys = Object.keys(data).sort();
+            const keyValuePairs = sortedKeys.map(key => `${JSON.stringify(key)}:${getCanonicalJSONString(data[key])}`);
+            return `{${keyValuePairs.join(',')}}`;
+        }
+
+        async function verifyAndParseFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const parsedData = JSON.parse(event.target.result);
+                        if (!parsedData.payload || !parsedData.signature) {
+                            resolve({ fileName: file.name, isValid: false, payload: null, error: "Invalid file structure." });
+                            return;
+                        }
+                        const { payload, signature: storedSignature } = parsedData;
+                        const canonicalString = getCanonicalJSONString(payload);
+                        const calculatedSignature = await createSha256Hash(canonicalString);
+
+                        resolve({
+                            fileName: file.name,
+                            isValid: calculatedSignature === storedSignature,
+                            payload: payload,
+                            createdAt: new Date(parsedData.createdAt)
+                        });
+                    } catch (e) {
+                        resolve({ fileName: file.name, isValid: false, payload: null, error: "Not a valid JSON file." });
+                    }
+                };
+                reader.readAsText(file);
+            });
+        }
+
+        // --- UI Rendering & Population ---
+
+        function populateFilters() {
+            // Student Filter
+            studentFilterList.innerHTML = '';
+            const uniqueStudents = new Set(allLoadedData.map(d => d.fileName));
+            uniqueStudents.forEach(fileName => {
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = fileName;
+                checkbox.checked = true;
+                checkbox.addEventListener('change', renderContent);
+                label.appendChild(checkbox);
+                label.append(` ${fileName}`);
+                studentFilterList.appendChild(label);
+            });
+
+            // Assignment Filter
+            assignmentSelect.innerHTML = '';
+            const allAssignments = new Set();
+            allLoadedData.forEach(data => {
+                if (data.isValid && data.payload) {
+                    Object.keys(data.payload).forEach(assignmentId => allAssignments.add(assignmentId));
+                }
+            });
+
+            const allOption = new Option('-- All Assignments --', 'all');
+            assignmentSelect.add(allOption);
+            allAssignments.forEach(id => assignmentSelect.add(new Option(id, id)));
+            assignmentSelect.addEventListener('change', renderContent);
+        }
+
+        function renderContent() {
+            contentDisplay.innerHTML = '';
+            
+            const selectedStudents = Array.from(studentFilterList.querySelectorAll('input:checked')).map(cb => cb.value);
+            const selectedAssignment = assignmentSelect.value;
+            
+            const dataToRender = allLoadedData.filter(d => selectedStudents.includes(d.fileName));
+
+            dataToRender.forEach(data => {
+                const studentContainer = document.createElement('div');
+                studentContainer.className = 'student-container';
+                
+                const statusClass = data.isValid ? 'status-valid' : 'status-invalid';
+                const statusIcon = data.isValid ? '✅' : '❌';
+
+                studentContainer.innerHTML = `<div class="student-header ${statusClass}">${statusIcon} ${data.fileName}</div>`;
+                
+                const contentBody = document.createElement('div');
+                contentBody.className = 'content-body';
+
+                if (!data.isValid) {
+                    contentBody.innerHTML = `<div class="invalid-file-message">This file is corrupt or has been tampered with.</div>`;
+                } else {
+                    Object.keys(data.payload).sort().forEach(assignmentId => {
+                        if (selectedAssignment !== 'all' && selectedAssignment !== assignmentId) return;
+
+                        const assignmentDetails = document.createElement('details');
+                        assignmentDetails.innerHTML = `<summary>${assignmentId}</summary>`;
+                        const detailsContent = document.createElement('div');
+                        detailsContent.className = 'details-content';
+
+                        Object.keys(data.payload[assignmentId]).sort().forEach(subId => {
+                            const subDetails = document.createElement('details');
+                            const subPayload = data.payload[assignmentId][subId];
+                            
+                            subDetails.innerHTML = `<summary>${subId}</summary>`;
+                            
+                            const subContent = document.createElement('div');
+                            subContent.className = 'details-content';
+
+                            if (subPayload.questions && Object.keys(subPayload.questions).length > 0) {
+                                let questionsHtml = '<ol class="questions-list">';
+                                Object.values(subPayload.questions).forEach(q => {
+                                    questionsHtml += `<li>${q}</li>`;
+                                });
+                                questionsHtml += '</ol>';
+                                subContent.innerHTML += questionsHtml;
+                            }
+                            
+                            if (subPayload.answer) {
+                                const answerDiv = document.createElement('div');
+                                answerDiv.className = 'answer-content';
+                                answerDiv.innerHTML = `<strong>Answer:</strong><br>${subPayload.answer}`;
+                                subContent.appendChild(answerDiv);
+                            }
+                            
+                            // Step 2.3: Update the Verifier to display attachments
+                            if (subPayload.attachments && Array.isArray(subPayload.attachments) && subPayload.attachments.length > 0) {
+                                const attachmentsDiv = document.createElement('div');
+                                attachmentsDiv.className = 'attachments-display';
+                                attachmentsDiv.innerHTML = `<h5>Attachments:</h5>`;
+
+                                subPayload.attachments.forEach(att => {
+                                    if (att.fileType && att.fileType.startsWith('image/')) {
+                                        const img = document.createElement('img');
+                                        img.src = att.data;
+                                        img.alt = att.fileName;
+                                        attachmentsDiv.appendChild(img);
+                                    } else {
+                                        const link = document.createElement('a');
+                                        link.href = att.data;
+                                        link.download = att.fileName;
+                                        link.textContent = `Download ${att.fileName}`;
+                                        attachmentsDiv.appendChild(link);
+                                    }
+                                });
+                                subContent.appendChild(attachmentsDiv);
+                            }
+
+                            subDetails.appendChild(subContent);
+                            detailsContent.appendChild(subDetails);
+                        });
+                        
+                        assignmentDetails.appendChild(detailsContent);
+                        contentBody.appendChild(assignmentDetails);
+                    });
+                }
+                studentContainer.appendChild(contentBody);
+                contentDisplay.appendChild(studentContainer);
+            });
+        }
+        
+        // --- Main Handler ---
+
+        async function handleFiles(files) {
+            allLoadedData = await Promise.all(Array.from(files).map(verifyAndParseFile));
+            
+            const validCount = allLoadedData.filter(f => f.isValid).length;
+            const invalidCount = allLoadedData.length - validCount;
+            
+            summaryPanel.style.display = 'block';
+            summaryPanel.innerHTML = `Loaded ${allLoadedData.length} file(s). <span class="status-valid">${validCount} authentic</span>, <span class="status-invalid">${invalidCount} tampered or invalid</span>.`;
+
+            if (allLoadedData.length > 0) {
+                filtersContainer.style.display = 'grid';
+                populateFilters();
+                renderContent();
+            } else {
+                filtersContainer.style.display = 'none';
+                contentDisplay.innerHTML = '';
+            }
+        }
+        
+        // --- Event Listeners ---
+
+        dropZone.addEventListener('click', () => {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json';
+            fileInput.multiple = true;
+            fileInput.onchange = e => handleFiles(e.target.files);
+            fileInput.click();
+        });
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dragover'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+    </script>
+</body>
+</html>
