@@ -1,4 +1,4 @@
-// script.js - v16 (FINAL: Restore Submit/Print and keep Backup/Import)
+// script.js - v17 (Removed local backup creation)
 
 (function() {
     'use strict';
@@ -252,28 +252,7 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- *** LOCAL BACKUP & RESTORE FUNCTIONALITY *** ---
-    async function createLocalBackup() {
-        console.log("Starting local backup process...");
-        // Use the same data gathering logic as the submission to ensure format consistency.
-        const finalObject = await gatherCurrentAssignmentData(true); 
-        if (!finalObject) {
-            // gatherCurrentAssignmentData already shows alerts on failure
-            return;
-        }
-
-        try {
-            const jsonString = JSON.stringify(finalObject, null, 2);
-            const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
-            const timestamp = new Date().toISOString().slice(0, 10);
-            const fileName = `abgabe-backup-${finalObject.identifier}-${finalObject.assignmentId}-${timestamp}.json`;
-            saveAs(blob, fileName);
-        } catch (e) {
-            console.error("Error creating local backup:", e);
-            alert("Fehler beim Erstellen der lokalen Backup-Datei.");
-        }
-    }
-
+    // --- *** LOCAL RESTORE FUNCTIONALITY *** ---
     async function importLocalBackup(event) {
         const file = event.target.files[0];
         const importFileInput = document.getElementById('importFileInput');
@@ -449,7 +428,6 @@
         // Event Listeners for all buttons
         document.getElementById('submitAssignmentBtn')?.addEventListener('click', submitAssignment);
         document.getElementById('printAssignmentBtn')?.addEventListener('click', printAssignment);
-        document.getElementById('createLocalBackupBtn')?.addEventListener('click', createLocalBackup); // Listener for the new button
         
         const importBtn = document.getElementById('importLocalBackupBtn');
         const importFileInput = document.getElementById('importFileInput');
