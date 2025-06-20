@@ -1,4 +1,4 @@
-// script.js - v19 (FIX for race condition on submit/pdf)
+// script.js - v20 (Submit All Functionality)
 
 (function() {
     'use strict';
@@ -7,6 +7,7 @@
     const STORAGE_PREFIX = 'textbox-assignment_';
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
+    // IMPORTANT: Remember to update this URL with the one from your newly deployed Google Apps Script.
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
     const DB_NAME = 'allgemeinbildungDB';
     const ATTACHMENT_STORE = 'attachments';
@@ -111,7 +112,8 @@
         if (savedText) { quill.root.innerHTML = savedText; }
     }
 
-    // --- FOCUSED DATA GATHERING LOGIC (for Submit/Print/Backup) ---
+    // --- FOCUSED DATA GATHERING LOGIC (FOR PRINT/BACKUP - UNCHANGED) ---
+    // This function remains to support the "Print" and "Backup" buttons which operate on the current assignment.
     async function gatherCurrentAssignmentData(promptForIdentifier = true) {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -154,25 +156,19 @@
             }
         }
         
-        // =================================================================================
-        // *** THE FIX: Manually include the current, unsaved editor content ***
-        // This solves the race condition where the user clicks "Submit" before the debounced save runs.
         const currentParams = getQueryParams();
         const currentAssignmentId = currentParams.get('assignmentId');
         const currentSubId = currentParams.get('subIds');
 
         if (quill && currentAssignmentId && currentSubId && currentAssignmentId === assignmentId) {
             const currentAnswer = quill.root.innerHTML;
-            // Ensure the sub-assignment object exists in the payload
             if (!payload[assignmentId][currentSubId]) {
                 payload[assignmentId][currentSubId] = {};
             }
-            // Overwrite the answer with the live content from the editor, but only if it's not empty.
             if (currentAnswer && currentAnswer.trim() !== '<p><br></p>') {
                 payload[assignmentId][currentSubId].answer = currentAnswer;
             }
         }
-        // =================================================================================
 
         const attachmentsPromise = new Promise(resolve => {
             getAllAttachmentsForAssignment(assignmentId, attachments => resolve(attachments));
@@ -200,26 +196,122 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** SUBMISSION & PRINT FUNCTIONS *** ---
+    // --- *** NEW *** COMPREHENSIVE DATA GATHERING LOGIC (FOR SUBMIT ALL) ---
+    // This new function gathers ALL data from localStorage and IndexedDB, ignoring the current URL.
+    async function gatherAllAssignmentsData(promptForIdentifier = true) {
+        let identifier = localStorage.getItem('aburossi_exporter_identifier') || '';
+        if (promptForIdentifier) {
+            identifier = prompt('Bitte gib deinen Namen oder eine eindeutige Kennung für diese Abgabe ein:', identifier);
+            if (!identifier) {
+                alert('Aktion abgebrochen. Eine Kennung ist erforderlich.');
+                return null;
+            }
+            localStorage.setItem('aburossi_exporter_identifier', identifier);
+        }
+
+        const allDataPayload = {};
+        const answerRegex = new RegExp(`^${STORAGE_PREFIX}(.+)_${SUB_STORAGE_PREFIX}(.+)$`);
+        const questionRegex = new RegExp(`^${QUESTIONS_PREFIX}(.+)_${SUB_STORAGE_PREFIX}(.+)$`);
+
+        // 1. Gather all text answers from localStorage
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const answerMatch = key.match(answerRegex);
+            if (answerMatch) {
+                const [, assignmentId, subId] = answerMatch;
+                if (!allDataPayload[assignmentId]) allDataPayload[assignmentId] = {};
+                if (!allDataPayload[assignmentId][subId]) allDataPayload[assignmentId][subId] = {};
+                allDataPayload[assignmentId][subId].answer = localStorage.getItem(key);
+            }
+        }
+
+        // 2. Gather all questions from localStorage
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const questionMatch = key.match(questionRegex);
+            if (questionMatch) {
+                const [, assignmentId, subId] = questionMatch;
+                if (!allDataPayload[assignmentId]) allDataPayload[assignmentId] = {};
+                if (!allDataPayload[assignmentId][subId]) allDataPayload[assignmentId][subId] = {};
+                try {
+                    allDataPayload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
+                } catch (e) { console.error(`Error parsing questions for key ${key}`, e); }
+            }
+        }
+        
+        // 3. Manually include the current, unsaved editor content to prevent race condition
+        const currentParams = getQueryParams();
+        const currentAssignmentId = currentParams.get('assignmentId');
+        const currentSubId = currentParams.get('subIds');
+        if (quill && currentAssignmentId && currentSubId) {
+            const currentAnswer = quill.root.innerHTML;
+            if (currentAnswer && currentAnswer.trim() !== '<p><br></p>') {
+                if (!allDataPayload[currentAssignmentId]) allDataPayload[currentAssignmentId] = {};
+                if (!allDataPayload[currentAssignmentId][currentSubId]) allDataPayload[currentAssignmentId][currentSubId] = {};
+                allDataPayload[currentAssignmentId][currentSubId].answer = currentAnswer;
+            }
+        }
+
+        // 4. Gather all attachments from IndexedDB
+        const attachmentsPromise = new Promise(resolve => {
+            if (!db) { resolve([]); return; }
+            const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
+            const store = transaction.objectStore(ATTACHMENT_STORE);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = (e) => { console.error("Error fetching all attachments:", e.target.error); resolve([]); };
+        });
+        const allAttachments = await attachmentsPromise;
+        
+        allAttachments.forEach(att => {
+            // Ensure the assignment/sub-assignment structure exists before adding attachment
+            if (allDataPayload[att.assignmentId] && allDataPayload[att.assignmentId][att.subId]) {
+                if (!allDataPayload[att.assignmentId][att.subId].attachments) {
+                    allDataPayload[att.assignmentId][att.subId].attachments = [];
+                }
+                allDataPayload[att.assignmentId][att.subId].attachments.push({ fileName: att.fileName, fileType: att.fileType, data: att.data });
+            }
+        });
+
+        if (Object.keys(allDataPayload).length === 0) {
+            alert("Es wurden keine gespeicherten Aufträge zum Senden gefunden.");
+            return null;
+        }
+
+        let signature = null;
+        if (window.crypto && window.crypto.subtle) {
+            try {
+                signature = await createSha256Hash(getCanonicalJSONString(allDataPayload));
+            } catch (e) { console.error("Error creating signature:", e); }
+        }
+
+        // The final object structure now contains a payload with multiple assignmentIds
+        return { identifier, payload: allDataPayload, signature, createdAt: new Date().toISOString() };
+    }
+
+    // --- *** MODIFIED *** SUBMISSION FUNCTION ---
     async function submitAssignment() {
-        console.log("Starting assignment submission process...");
-        const finalObject = await gatherCurrentAssignmentData(true);
+        console.log("Starting submission process for ALL assignments...");
+        // Call the new "gather all" function
+        const finalObject = await gatherAllAssignmentsData(true); 
         if (!finalObject) return;
+
         if (!GOOGLE_SCRIPT_URL) {
             alert('Konfigurationsfehler: Die Abgabe-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
             return;
         }
-        const confirmation = confirm("Du bist dabei, alle gespeicherten Aufträge für dieses Kapitel an deinen Lehrer zu senden. Fortfahren?");
+        const confirmation = confirm("Du bist dabei, ALLE gespeicherten Aufträge an deinen Lehrer zu senden. Fortfahren?");
         if (!confirmation) {
             alert("Abgabe abgebrochen.");
             return;
         }
-        alert('Deine Arbeit wird an Google Drive übermittelt. Dies kann einen Moment dauern. Bitte warte auf die Erfolgsbestätigung.');
+        alert('Deine Arbeiten werden an Google Drive übermittelt. Dies kann einen Moment dauern. Bitte warte auf die Erfolgsbestätigung.');
         try {
             const response = await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'cors', body: JSON.stringify(finalObject) });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                const successMessage = `Deine Arbeit ist beim Lehrer angekommen und als ${result.fileName} gespeichert.\n\nDu kannst eine Kopie hier herunterladen:\n${result.downloadUrl}`;
+                // The success message is now more generic and links to the student's folder
+                const successMessage = `Deine Arbeiten wurden erfolgreich übermittelt.\n\nDu kannst alle deine Abgaben in diesem Ordner einsehen:\n${result.folderUrl}`;
                 alert(successMessage);
             }
             else {
@@ -231,6 +323,8 @@
         }
     }
 
+    // --- PRINT FUNCTION (UNCHANGED) ---
+    // It still uses gatherCurrentAssignmentData to print only the current assignment
     async function printAssignment() {
         const data = await gatherCurrentAssignmentData(false);
         if (!data || !data.payload) return;
@@ -272,7 +366,7 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- *** LOCAL RESTORE FUNCTIONALITY *** ---
+    // --- LOCAL RESTORE FUNCTIONALITY ---
     async function importLocalBackup(event) {
         const file = event.target.files[0];
         const importFileInput = document.getElementById('importFileInput');
