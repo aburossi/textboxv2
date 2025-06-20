@@ -1,4 +1,4 @@
-// script.js - v17 (Removed local backup creation)
+// script.js - v18 (Added PDF Generation)
 
 (function() {
     'use strict';
@@ -8,6 +8,7 @@
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
+    const PDF_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXrxRkHJvNdH0AxYva7_J-ktLospHqZHsz3b3QB6F8YniSEyEfxqpT7fX7ZwKnPYYJ/exec';
     const DB_NAME = 'allgemeinbildungDB';
     const ATTACHMENT_STORE = 'attachments';
     let quill; // Global state for the editor
@@ -180,7 +181,7 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** SUBMISSION & PRINT FUNCTIONS *** ---
+    // --- *** SUBMISSION, PDF & PRINT FUNCTIONS *** ---
     async function submitAssignment() {
         console.log("Starting assignment submission process...");
         const finalObject = await gatherCurrentAssignmentData(true);
@@ -198,7 +199,6 @@
         try {
             const response = await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'cors', body: JSON.stringify(finalObject) });
             const result = await response.json();
-            // CORRECTED CODE
             if (response.ok && result.status === 'success') {
                 const successMessage = `Deine Arbeit ist beim Lehrer angekommen und als ${result.fileName} gespeichert.\n\nDu kannst eine Kopie hier herunterladen:\n${result.downloadUrl}`;
                 alert(successMessage);
@@ -209,6 +209,51 @@
         } catch (error) {
             console.error('Google Drive submission failed:', error);
             alert(`Fehler beim Senden der Daten an Google Drive. Dies könnte ein Internetproblem sein.\n\nBitte versuche es erneut.\n\nFehler: ${error.message}`);
+        }
+    }
+
+    async function generatePdf() {
+        console.log("Starting PDF generation process...");
+        const finalObject = await gatherCurrentAssignmentData(true);
+        if (!finalObject) return;
+
+        if (!PDF_SCRIPT_URL) {
+            alert('Konfigurationsfehler: Die PDF-Generierungs-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
+            return;
+        }
+
+        const confirmation = confirm("Du bist dabei, ein PDF deiner Arbeit für dieses Kapitel zu erstellen. Dies wird an einen Server gesendet, um das Dokument zu generieren. Fortfahren?");
+        if (!confirmation) {
+            alert("PDF-Erstellung abgebrochen.");
+            return;
+        }
+
+        alert('Dein PDF wird generiert. Dies kann einen Moment dauern. Der Download startet automatisch, sobald es fertig ist.');
+
+        try {
+            const response = await fetch(PDF_SCRIPT_URL, {
+                method: 'POST',
+                mode: 'cors',
+                body: JSON.stringify(finalObject)
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.status === 'success') {
+                alert(`PDF erfolgreich erstellt!\nDatei: ${result.fileName}\n\nDer Download wird jetzt gestartet.`);
+                // Programmatically trigger the download
+                const link = document.createElement('a');
+                link.href = result.downloadUrl;
+                link.setAttribute('download', result.fileName);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
+            }
+        } catch (error) {
+            console.error('PDF generation failed:', error);
+            alert(`Fehler bei der Erstellung des PDFs. Dies könnte ein Internetproblem sein.\n\nBitte versuche es erneut.\n\nFehler: ${error.message}`);
         }
     }
 
@@ -428,6 +473,7 @@
 
         // Event Listeners for all buttons
         document.getElementById('submitAssignmentBtn')?.addEventListener('click', submitAssignment);
+        document.getElementById('generatePdfBtn')?.addEventListener('click', generatePdf);
         document.getElementById('printAssignmentBtn')?.addEventListener('click', printAssignment);
         
         const importBtn = document.getElementById('importLocalBackupBtn');

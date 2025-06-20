@@ -169,6 +169,13 @@ button:hover {
     background-color: #3367D6;
 }
 
+#generatePdfBtn {
+    background-color: #009688; /* Teal */
+}
+#generatePdfBtn:hover {
+    background-color: #00796B;
+}
+
 #printAssignmentBtn {
     background-color: #673AB7;  /* Purple */
     color: white;
