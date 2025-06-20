@@ -1,16 +1,15 @@
-// upload.js
+// upload.js (Corrected with URL)
 (function() {
     'use strict';
 
-    // !!! IMPORTANT !!!
-    // PASTE YOUR NEW GOOGLE APPS SCRIPT URL HERE
-    const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL/exec';
+    // Your new Google Apps Script URL is pasted here
+    const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybPrhlVFPiDA2Lk0BQx9tuV_r8r43cfCZZpzpQHv6gsRL9AC3M4eClOA3rOcEbE6-X/exec';
 
     const statusEl = document.getElementById('uploadStatus');
     const fileInput = document.getElementById('fileInput');
     const uploadLabel = document.getElementById('uploadLabel');
 
-    if (IMAGE_UPLOAD_SCRIPT_URL.includes('YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL')) {
+    if (!IMAGE_UPLOAD_SCRIPT_URL || IMAGE_UPLOAD_SCRIPT_URL.includes('YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL')) {
         statusEl.textContent = 'Fehler: Das Upload-Skript ist nicht konfiguriert.';
         statusEl.style.color = 'red';
         uploadLabel.style.backgroundColor = '#ccc';
@@ -35,7 +34,7 @@
         statusEl.style.color = 'black';
         uploadLabel.style.display = 'none';
 
-        const imageDataUrl = await resizeImage(file, 1200); // Resize to max 1200px
+        const imageDataUrl = await resizeImage(file, 1200);
 
         statusEl.textContent = "Bild wird hochgeladen...";
 
@@ -48,7 +47,7 @@
                     sessionId: sessionId,
                     imageData: imageDataUrl
                 }),
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' } // Required for Apps Script
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' }
             });
 
             const result = await response.json();
@@ -63,7 +62,7 @@
             console.error('Upload failed:', error);
             statusEl.textContent = `Upload fehlgeschlagen: ${error.message}`;
             statusEl.style.color = 'red';
-            uploadLabel.style.display = 'block'; // Show button again on failure
+            uploadLabel.style.display = 'block';
         }
     });
 
@@ -87,7 +86,7 @@
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.9)); // Compress to JPEG for smaller size
+                    resolve(canvas.toDataURL('image/jpeg', 0.9));
                 };
                 img.src = e.target.result;
             };

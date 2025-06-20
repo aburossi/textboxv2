@@ -1,5 +1,4 @@
-// script.js - v21 (Phone Upload Integration)
-
+// script.js - v20 (Submit All Functionality) - CORRECTED ORIGINAL VERSION
 (function() {
     'use strict';
 
@@ -7,14 +6,12 @@
     const STORAGE_PREFIX = 'textbox-assignment_';
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
-    // IMPORTANT: Remember to update this URL with the one from your newly deployed Google Apps Script.
+    // IMPORTANT: This URL is for assignment submission.
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
     const DB_NAME = 'allgemeinbildungDB';
     const ATTACHMENT_STORE = 'attachments';
     let quill; // Global state for the editor
     let db; // Global state for the IndexedDB connection
-    let phoneUploadInterval = null; // To hold the polling timer for phone uploads
-    let qrCodeInstance = null; // To hold the QR code generator instance
 
     // --- Step 1.1: Set up the IndexedDB Database ---
     function initializeDB() {
@@ -90,7 +87,6 @@
     function showSaveIndicator() { const i = document.getElementById('saveIndicator'); if (!i) return; i.style.opacity = '1'; setTimeout(() => { i.style.opacity = '0'; }, 2000); }
     async function createSha256Hash(str) { const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-256', b); return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join(''); }
     function getCanonicalJSONString(data) { if (data === null || typeof data !== 'object') return JSON.stringify(data); if (Array.isArray(data)) return `[${data.map(getCanonicalJSONString).join(',')}]`; const k = Object.keys(data).sort(); const p = k.map(key => `${JSON.stringify(key)}:${getCanonicalJSONString(data[key])}`); return `{${p.join(',')}}`; }
-    function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); }); }
 
     // --- DATA SAVING & LOADING ---
     function saveContent() {
@@ -114,86 +110,8 @@
         const savedText = localStorage.getItem(`${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`);
         if (savedText) { quill.root.innerHTML = savedText; }
     }
-    
-    // --- PHONE UPLOAD FUNCTIONALITY ---
-    function startPhoneUploadProcess() {
-        const modal = document.getElementById('phoneUploadModal');
-        const qrCodeDiv = document.getElementById('qrcode');
-        const modalStatus = document.getElementById('modalStatus');
-        const sessionId = generateUUID();
 
-        qrCodeDiv.innerHTML = '';
-        const uploadUrl = `https://aburossi.github.io/textboxv2/upload.html?sessionId=${sessionId}`;
-
-        if (!qrCodeInstance) {
-            qrCodeInstance = new QRCode(qrCodeDiv, {
-                text: uploadUrl,
-                width: 200,
-                height: 200,
-                correctLevel: QRCode.CorrectLevel.H
-            });
-        } else {
-            qrCodeInstance.makeCode(uploadUrl);
-        }
-    
-        modalStatus.textContent = "Warte auf Bild-Upload...";
-        modal.style.display = 'flex';
-
-        pollForImage(sessionId);
-
-        document.getElementById('cancelUploadBtn').onclick = () => {
-            stopPolling();
-            modal.style.display = 'none';
-        };
-    }
-
-    function pollForImage(sessionId) {
-        stopPolling(); 
-
-        phoneUploadInterval = setInterval(async () => {
-            console.log(`Polling for sessionId: ${sessionId}`);
-            try {
-                const response = await fetch(GOOGLE_SCRIPT_URL, {
-                    method: 'POST',
-                    mode: 'cors',
-                    body: JSON.stringify({
-                        action: 'checkUpload',
-                        sessionId: sessionId
-                    })
-                });
-                const result = await response.json();
-
-                if (response.ok && result.status === 'success' && result.imageData) {
-                    stopPolling();
-                    document.getElementById('phoneUploadModal').style.display = 'none';
-                    
-                    const range = quill.getSelection(true);
-                    quill.insertEmbed(range.index, 'image', result.imageData);
-                    quill.setSelection(range.index + 1);
-                    debouncedSave();
-                }
-            } catch (error) {
-                console.error('Polling error:', error);
-            }
-        }, 3000); // Poll every 3 seconds
-
-        setTimeout(() => {
-            if (phoneUploadInterval) {
-                console.log("Polling timed out after 5 minutes.");
-                stopPolling();
-                document.getElementById('modalStatus').textContent = "Zeitüberschreitung. Bitte erneut versuchen.";
-            }
-        }, 300000); // 5 minute timeout
-    }
-
-    function stopPolling() {
-        if (phoneUploadInterval) {
-            clearInterval(phoneUploadInterval);
-            phoneUploadInterval = null;
-        }
-    }
-
-    // --- DATA GATHERING LOGIC (PRINT/BACKUP/SUBMIT) ---
+    // --- FOCUSED DATA GATHERING LOGIC (FOR PRINT/BACKUP) ---
     async function gatherCurrentAssignmentData(promptForIdentifier = true) {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -273,6 +191,7 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
+    // --- COMPREHENSIVE DATA GATHERING LOGIC (FOR SUBMIT ALL) ---
     async function gatherAllAssignmentsData(promptForIdentifier = true) {
         let identifier = localStorage.getItem('aburossi_exporter_identifier') || '';
         if (promptForIdentifier) {
@@ -357,14 +276,11 @@
         return { identifier, payload: allDataPayload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- SUBMISSION, PRINT & BACKUP FUNCTIONS ---
+    // --- SUBMISSION FUNCTION ---
     async function submitAssignment() {
         console.log("Starting submission process for ALL assignments...");
-        const finalObject = await gatherAllAssignmentsData(true);
+        const finalObject = await gatherAllAssignmentsData(true); 
         if (!finalObject) return;
-
-        // Add the action property for the backend to identify the task
-        finalObject.action = 'submitAssignments'; 
 
         if (!GOOGLE_SCRIPT_URL) {
             alert('Konfigurationsfehler: Die Abgabe-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
@@ -392,6 +308,7 @@
         }
     }
 
+    // --- PRINT FUNCTION ---
     async function printAssignment() {
         const data = await gatherCurrentAssignmentData(false);
         if (!data || !data.payload) return;
@@ -433,6 +350,7 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
+    // --- LOCAL RESTORE FUNCTIONALITY ---
     async function importLocalBackup(event) {
         const file = event.target.files[0];
         const importFileInput = document.getElementById('importFileInput');
@@ -558,38 +476,12 @@
     document.addEventListener("DOMContentLoaded", function() {
         initializeDB();
 
-        // Custom handler for the image button to trigger the phone upload
-        function addFromPhoneHandler() {
-            startPhoneUploadProcess();
-        }
-        
         quill = new Quill('#answerBox', {
             theme: 'snow',
             placeholder: 'Gib hier deinen Text ein...',
-            modules: {
-                toolbar: {
-                    container: [
-                        ['bold', 'italic', 'underline'],
-                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                        ['image'], // This button will now be handled by our custom handler
-                        ['clean']
-                    ],
-                    handlers: {
-                        'image': addFromPhoneHandler
-                    }
-                }
-            }
+            modules: { toolbar: [ ['bold', 'italic', 'underline'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['clean'], ['image'] ] }
         });
         
-        // Optional: Customize the image button icon/text for clarity
-        try {
-            const imageButton = document.querySelector('.ql-toolbar .ql-image');
-            if (imageButton) {
-                imageButton.title = "Bild von Smartphone hinzufügen";
-                // You can add more visual cues here if desired
-            }
-        } catch(e) { console.warn("Could not customize toolbar button.", e); }
-
         quill.on('text-change', debouncedSave);
 
         const { subId, questions } = getQuestionsFromUrlAndSave();

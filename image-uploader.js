@@ -1,31 +1,27 @@
-// image-uploader.js
+// image-uploader.js (Corrected with URL)
 document.addEventListener("DOMContentLoaded", function() {
     'use strict';
 
-    // !!! IMPORTANT !!!
-    // PASTE YOUR NEW GOOGLE APPS SCRIPT URL HERE (must be the same as in upload.js)
-    const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL/exec';
+    // Your new Google Apps Script URL is pasted here
+    const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbybPrhlVFPiDA2Lk0BQx9tuV_r8r43cfCZZpzpQHv6gsRL9AC3M4eClOA3rOcEbE6-X/exec';
 
     let phoneUploadInterval = null;
     let qrCodeInstance = null;
     let quill = null;
 
-    // This function waits for the main script.js to initialize Quill
     function waitForQuill() {
         const quillCheckInterval = setInterval(() => {
-            // The main script assigns the Quill instance to the window or a global var
-            // We assume it's available on a global `quill` variable as per script.js
             const mainEditor = document.querySelector('#answerBox .ql-editor');
             if (mainEditor && mainEditor.__quill) {
                 quill = mainEditor.__quill;
                 clearInterval(quillCheckInterval);
                 initializeImageUploader();
             }
-        }, 200); // Check every 200ms
+        }, 200);
     }
 
     function initializeImageUploader() {
-        if (IMAGE_UPLOAD_SCRIPT_URL.includes('YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL')) {
+        if (!IMAGE_UPLOAD_SCRIPT_URL || IMAGE_UPLOAD_SCRIPT_URL.includes('YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL')) {
             console.error("Image Uploader: Script URL is not configured.");
             return;
         }
@@ -36,7 +32,6 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        // Create a new button for the toolbar
         const phoneButton = document.createElement('button');
         phoneButton.type = 'button';
         phoneButton.classList.add('ql-phone-upload');
@@ -45,7 +40,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
         phoneButton.addEventListener('click', startPhoneUploadProcess);
         
-        // Find an existing button group to append to, or just append to the toolbar
         let targetGroup = toolbar.querySelector('.ql-formats');
         if (targetGroup) {
              targetGroup.appendChild(phoneButton);
@@ -124,6 +118,5 @@ document.addEventListener("DOMContentLoaded", function() {
         phoneUploadInterval = null;
     }
 
-    // Start the process
     waitForQuill();
 });
