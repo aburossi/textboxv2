@@ -1,4 +1,4 @@
-// script.js - v18 (Added PDF Generation)
+// script.js - v19 (FIX for race condition on submit/pdf)
 
 (function() {
     'use strict';
@@ -8,7 +8,7 @@
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
-    const PDF_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXrxRkHJvNdH0AxYva7_J-ktLospHqZHsz3b3QB6F8YniSEyEfxqpT7fX7ZwKnPYYJ/exec';
+    const PDF_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXrxRkHJvNdH0AxYva7_J-ktLospHqZHsz3b3QB6F8YniSEyEfxqpT7fX7ZwKnPYYJ/exec'; // <--- Make sure this is your latest deployed URL
     const DB_NAME = 'allgemeinbildungDB';
     const ATTACHMENT_STORE = 'attachments';
     let quill; // Global state for the editor
@@ -155,6 +155,26 @@
             }
         }
         
+        // =================================================================================
+        // *** THE FIX: Manually include the current, unsaved editor content ***
+        // This solves the race condition where the user clicks "Submit" before the debounced save runs.
+        const currentParams = getQueryParams();
+        const currentAssignmentId = currentParams.get('assignmentId');
+        const currentSubId = currentParams.get('subIds');
+
+        if (quill && currentAssignmentId && currentSubId && currentAssignmentId === assignmentId) {
+            const currentAnswer = quill.root.innerHTML;
+            // Ensure the sub-assignment object exists in the payload
+            if (!payload[assignmentId][currentSubId]) {
+                payload[assignmentId][currentSubId] = {};
+            }
+            // Overwrite the answer with the live content from the editor, but only if it's not empty.
+            if (currentAnswer && currentAnswer.trim() !== '<p><br></p>') {
+                payload[assignmentId][currentSubId].answer = currentAnswer;
+            }
+        }
+        // =================================================================================
+
         const attachmentsPromise = new Promise(resolve => {
             getAllAttachmentsForAssignment(assignmentId, attachments => resolve(attachments));
         });
