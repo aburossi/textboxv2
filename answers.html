@@ -25,6 +25,16 @@
         </div>
     </div>
 
+    <div id="phoneUploadModal" style="display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;">
+        <div style="background-color: white; padding: 25px; border-radius: 8px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3);">
+            <h4>Bild von Smartphone hinzufügen</h4>
+            <p>Scannen Sie diesen QR-Code mit Ihrer Handykamera:</p>
+            <div id="qrcode" style="margin: 20px;"></div>
+            <p id="modalStatus">Warte auf Bild-Upload...</p>
+            <button id="cancelUploadBtn">Abbrechen</button>
+        </div>
+    </div>
+
     <div class="button-container">
         <button id="submitAssignmentBtn">Alle Aufträge abgeben</button>
         <button id="printAssignmentBtn">Alle Aufträge drucken</button>

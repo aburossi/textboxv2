@@ -1,4 +1,4 @@
-// script.js - v20 (Submit All Functionality)
+// script.js - v21 (Phone Upload Integration)
 
 (function() {
     'use strict';
@@ -13,6 +13,8 @@
     const ATTACHMENT_STORE = 'attachments';
     let quill; // Global state for the editor
     let db; // Global state for the IndexedDB connection
+    let phoneUploadInterval = null; // To hold the polling timer for phone uploads
+    let qrCodeInstance = null; // To hold the QR code generator instance
 
     // --- Step 1.1: Set up the IndexedDB Database ---
     function initializeDB() {
@@ -88,6 +90,7 @@
     function showSaveIndicator() { const i = document.getElementById('saveIndicator'); if (!i) return; i.style.opacity = '1'; setTimeout(() => { i.style.opacity = '0'; }, 2000); }
     async function createSha256Hash(str) { const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-256', b); return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join(''); }
     function getCanonicalJSONString(data) { if (data === null || typeof data !== 'object') return JSON.stringify(data); if (Array.isArray(data)) return `[${data.map(getCanonicalJSONString).join(',')}]`; const k = Object.keys(data).sort(); const p = k.map(key => `${JSON.stringify(key)}:${getCanonicalJSONString(data[key])}`); return `{${p.join(',')}}`; }
+    function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) { var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8); return v.toString(16); }); }
 
     // --- DATA SAVING & LOADING ---
     function saveContent() {
@@ -111,9 +114,86 @@
         const savedText = localStorage.getItem(`${STORAGE_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`);
         if (savedText) { quill.root.innerHTML = savedText; }
     }
+    
+    // --- PHONE UPLOAD FUNCTIONALITY ---
+    function startPhoneUploadProcess() {
+        const modal = document.getElementById('phoneUploadModal');
+        const qrCodeDiv = document.getElementById('qrcode');
+        const modalStatus = document.getElementById('modalStatus');
+        const sessionId = generateUUID();
 
-    // --- FOCUSED DATA GATHERING LOGIC (FOR PRINT/BACKUP - UNCHANGED) ---
-    // This function remains to support the "Print" and "Backup" buttons which operate on the current assignment.
+        qrCodeDiv.innerHTML = '';
+        const uploadUrl = `https://aburossi.github.io/textboxv2/upload.html?sessionId=${sessionId}`;
+
+        if (!qrCodeInstance) {
+            qrCodeInstance = new QRCode(qrCodeDiv, {
+                text: uploadUrl,
+                width: 200,
+                height: 200,
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        } else {
+            qrCodeInstance.makeCode(uploadUrl);
+        }
+    
+        modalStatus.textContent = "Warte auf Bild-Upload...";
+        modal.style.display = 'flex';
+
+        pollForImage(sessionId);
+
+        document.getElementById('cancelUploadBtn').onclick = () => {
+            stopPolling();
+            modal.style.display = 'none';
+        };
+    }
+
+    function pollForImage(sessionId) {
+        stopPolling(); 
+
+        phoneUploadInterval = setInterval(async () => {
+            console.log(`Polling for sessionId: ${sessionId}`);
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'cors',
+                    body: JSON.stringify({
+                        action: 'checkUpload',
+                        sessionId: sessionId
+                    })
+                });
+                const result = await response.json();
+
+                if (response.ok && result.status === 'success' && result.imageData) {
+                    stopPolling();
+                    document.getElementById('phoneUploadModal').style.display = 'none';
+                    
+                    const range = quill.getSelection(true);
+                    quill.insertEmbed(range.index, 'image', result.imageData);
+                    quill.setSelection(range.index + 1);
+                    debouncedSave();
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }, 3000); // Poll every 3 seconds
+
+        setTimeout(() => {
+            if (phoneUploadInterval) {
+                console.log("Polling timed out after 5 minutes.");
+                stopPolling();
+                document.getElementById('modalStatus').textContent = "Zeitüberschreitung. Bitte erneut versuchen.";
+            }
+        }, 300000); // 5 minute timeout
+    }
+
+    function stopPolling() {
+        if (phoneUploadInterval) {
+            clearInterval(phoneUploadInterval);
+            phoneUploadInterval = null;
+        }
+    }
+
+    // --- DATA GATHERING LOGIC (PRINT/BACKUP/SUBMIT) ---
     async function gatherCurrentAssignmentData(promptForIdentifier = true) {
         const params = getQueryParams();
         const assignmentId = params.get('assignmentId');
@@ -170,10 +250,7 @@
             }
         }
 
-        const attachmentsPromise = new Promise(resolve => {
-            getAllAttachmentsForAssignment(assignmentId, attachments => resolve(attachments));
-        });
-        const attachments = await attachmentsPromise;
+        const attachments = await new Promise(resolve => getAllAttachmentsForAssignment(assignmentId, resolve));
         
         attachments.forEach(att => {
             if (!payload[assignmentId][att.subId]) payload[assignmentId][att.subId] = {};
@@ -196,8 +273,6 @@
         return { identifier, assignmentId, payload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** NEW *** COMPREHENSIVE DATA GATHERING LOGIC (FOR SUBMIT ALL) ---
-    // This new function gathers ALL data from localStorage and IndexedDB, ignoring the current URL.
     async function gatherAllAssignmentsData(promptForIdentifier = true) {
         let identifier = localStorage.getItem('aburossi_exporter_identifier') || '';
         if (promptForIdentifier) {
@@ -213,7 +288,6 @@
         const answerRegex = new RegExp(`^${STORAGE_PREFIX}(.+)_${SUB_STORAGE_PREFIX}(.+)$`);
         const questionRegex = new RegExp(`^${QUESTIONS_PREFIX}(.+)_${SUB_STORAGE_PREFIX}(.+)$`);
 
-        // 1. Gather all text answers from localStorage
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             const answerMatch = key.match(answerRegex);
@@ -225,7 +299,6 @@
             }
         }
 
-        // 2. Gather all questions from localStorage
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
             const questionMatch = key.match(questionRegex);
@@ -239,7 +312,6 @@
             }
         }
         
-        // 3. Manually include the current, unsaved editor content to prevent race condition
         const currentParams = getQueryParams();
         const currentAssignmentId = currentParams.get('assignmentId');
         const currentSubId = currentParams.get('subIds');
@@ -252,8 +324,7 @@
             }
         }
 
-        // 4. Gather all attachments from IndexedDB
-        const attachmentsPromise = new Promise(resolve => {
+        const allAttachments = await new Promise(resolve => {
             if (!db) { resolve([]); return; }
             const transaction = db.transaction([ATTACHMENT_STORE], 'readonly');
             const store = transaction.objectStore(ATTACHMENT_STORE);
@@ -261,10 +332,8 @@
             request.onsuccess = () => resolve(request.result || []);
             request.onerror = (e) => { console.error("Error fetching all attachments:", e.target.error); resolve([]); };
         });
-        const allAttachments = await attachmentsPromise;
         
         allAttachments.forEach(att => {
-            // Ensure the assignment/sub-assignment structure exists before adding attachment
             if (allDataPayload[att.assignmentId] && allDataPayload[att.assignmentId][att.subId]) {
                 if (!allDataPayload[att.assignmentId][att.subId].attachments) {
                     allDataPayload[att.assignmentId][att.subId].attachments = [];
@@ -285,16 +354,17 @@
             } catch (e) { console.error("Error creating signature:", e); }
         }
 
-        // The final object structure now contains a payload with multiple assignmentIds
         return { identifier, payload: allDataPayload, signature, createdAt: new Date().toISOString() };
     }
 
-    // --- *** MODIFIED *** SUBMISSION FUNCTION ---
+    // --- SUBMISSION, PRINT & BACKUP FUNCTIONS ---
     async function submitAssignment() {
         console.log("Starting submission process for ALL assignments...");
-        // Call the new "gather all" function
-        const finalObject = await gatherAllAssignmentsData(true); 
+        const finalObject = await gatherAllAssignmentsData(true);
         if (!finalObject) return;
+
+        // Add the action property for the backend to identify the task
+        finalObject.action = 'submitAssignments'; 
 
         if (!GOOGLE_SCRIPT_URL) {
             alert('Konfigurationsfehler: Die Abgabe-URL ist nicht festgelegt. Bitte kontaktiere deinen Lehrer.');
@@ -310,7 +380,6 @@
             const response = await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'cors', body: JSON.stringify(finalObject) });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                // The success message is now more generic and links to the student's folder
                 const successMessage = `Deine Arbeiten wurden erfolgreich übermittelt.\n\nDu kannst alle deine Abgaben in diesem Ordner einsehen:\n${result.folderUrl}`;
                 alert(successMessage);
             }
@@ -323,8 +392,6 @@
         }
     }
 
-    // --- PRINT FUNCTION (UNCHANGED) ---
-    // It still uses gatherCurrentAssignmentData to print only the current assignment
     async function printAssignment() {
         const data = await gatherCurrentAssignmentData(false);
         if (!data || !data.payload) return;
@@ -366,7 +433,6 @@
         printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
     }
 
-    // --- LOCAL RESTORE FUNCTIONALITY ---
     async function importLocalBackup(event) {
         const file = event.target.files[0];
         const importFileInput = document.getElementById('importFileInput');
@@ -492,12 +558,38 @@
     document.addEventListener("DOMContentLoaded", function() {
         initializeDB();
 
+        // Custom handler for the image button to trigger the phone upload
+        function addFromPhoneHandler() {
+            startPhoneUploadProcess();
+        }
+        
         quill = new Quill('#answerBox', {
             theme: 'snow',
             placeholder: 'Gib hier deinen Text ein...',
-            modules: { toolbar: [ ['bold', 'italic', 'underline'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['clean'], ['image'] ] }
+            modules: {
+                toolbar: {
+                    container: [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['image'], // This button will now be handled by our custom handler
+                        ['clean']
+                    ],
+                    handlers: {
+                        'image': addFromPhoneHandler
+                    }
+                }
+            }
         });
         
+        // Optional: Customize the image button icon/text for clarity
+        try {
+            const imageButton = document.querySelector('.ql-toolbar .ql-image');
+            if (imageButton) {
+                imageButton.title = "Bild von Smartphone hinzufügen";
+                // You can add more visual cues here if desired
+            }
+        } catch(e) { console.warn("Could not customize toolbar button.", e); }
+
         quill.on('text-change', debouncedSave);
 
         const { subId, questions } = getQuestionsFromUrlAndSave();
