@@ -199,9 +199,9 @@
             const response = await fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'cors', body: JSON.stringify(finalObject) });
             const result = await response.json();
             if (response.ok && result.status === 'success') {
-                const successMessage = `Deine Arbeit ist beim Lehrer angekommen und als ${result.fileName} gespeichert.\n\nDu kannst eine Kopie hier herunterladen:\n${result.downloadUrl}`;
-                alert(successMessage);
-            }
+                const messageContainer = document.createElement('div');
+                messageContainer.innerHTML = `Deine Arbeit ist beim Lehrer angekommen und als ${result.fileName} gespeichert.\n\nDu kannst eine Kopie hier herunterladen:\n${result.downloadUrl}</strong> gespeichert.`;
+                alert(messageContainer.textContent);
             } else {
                 throw new Error(result.message || 'Ein unbekannter Fehler ist auf dem Server aufgetreten.');
             }
