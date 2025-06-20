@@ -2,10 +2,21 @@
 (function() {
     'use strict';
 
-    // IMPORTANT: Make sure this URL matches the one in your main script.js
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
+    // !!! IMPORTANT !!!
+    // PASTE YOUR NEW GOOGLE APPS SCRIPT URL HERE
+    const IMAGE_UPLOAD_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL/exec';
+
     const statusEl = document.getElementById('uploadStatus');
     const fileInput = document.getElementById('fileInput');
+    const uploadLabel = document.getElementById('uploadLabel');
+
+    if (IMAGE_UPLOAD_SCRIPT_URL.includes('YOUR_NEW_IMAGE_UPLOAD_SCRIPT_URL')) {
+        statusEl.textContent = 'Fehler: Das Upload-Skript ist nicht konfiguriert.';
+        statusEl.style.color = 'red';
+        uploadLabel.style.backgroundColor = '#ccc';
+        uploadLabel.style.cursor = 'not-allowed';
+        return;
+    }
 
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('sessionId');
@@ -22,21 +33,22 @@
 
         statusEl.textContent = "Bild wird verarbeitet...";
         statusEl.style.color = 'black';
+        uploadLabel.style.display = 'none';
 
-        // Resize image for performance before uploading
-        const imageDataUrl = await resizeImage(file, 1024); // Resize to max 1024px width/height
+        const imageDataUrl = await resizeImage(file, 1200); // Resize to max 1200px
 
         statusEl.textContent = "Bild wird hochgeladen...";
 
         try {
-            const response = await fetch(GOOGLE_SCRIPT_URL, {
+            const response = await fetch(IMAGE_UPLOAD_SCRIPT_URL, {
                 method: 'POST',
                 mode: 'cors',
                 body: JSON.stringify({
                     action: 'uploadImage',
                     sessionId: sessionId,
                     imageData: imageDataUrl
-                })
+                }),
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' } // Required for Apps Script
             });
 
             const result = await response.json();
@@ -44,7 +56,6 @@
             if (response.ok && result.status === 'success') {
                 statusEl.textContent = "Erfolg! Das Bild wurde an deinen Computer gesendet. Du kannst dieses Fenster schliessen.";
                 statusEl.style.color = 'green';
-                document.getElementById('uploadLabel').style.display = 'none'; // Hide button after success
             } else {
                 throw new Error(result.message || 'Serverfehler.');
             }
@@ -52,10 +63,10 @@
             console.error('Upload failed:', error);
             statusEl.textContent = `Upload fehlgeschlagen: ${error.message}`;
             statusEl.style.color = 'red';
+            uploadLabel.style.display = 'block'; // Show button again on failure
         }
     });
 
-    // Helper function to resize the image client-side
     function resizeImage(file, maxSize) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -66,15 +77,9 @@
                     let height = img.height;
 
                     if (width > height) {
-                        if (width > maxSize) {
-                            height *= maxSize / width;
-                            width = maxSize;
-                        }
+                        if (width > maxSize) { height *= maxSize / width; width = maxSize; }
                     } else {
-                        if (height > maxSize) {
-                            width *= maxSize / height;
-                            height = maxSize;
-                        }
+                        if (height > maxSize) { width *= maxSize / height; height = maxSize; }
                     }
 
                     const canvas = document.createElement('canvas');
@@ -82,7 +87,7 @@
                     canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL(file.type)); // Get data URL of the resized image
+                    resolve(canvas.toDataURL('image/jpeg', 0.9)); // Compress to JPEG for smaller size
                 };
                 img.src = e.target.result;
             };
