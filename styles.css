@@ -2,13 +2,13 @@
 /* Grundlegende Stile */
 :root {
     --background-color: #ffffff; /* Weißer Hintergrund */
-    --text-color: #000000;       /* Schwarzer Text */
+    --text-color: #000000; /* Schwarzer Text */
     --editor-background: #ffffff;
     --border-color: #cccccc;
     --button-text-color: #ffffff;
-    --button-copy-bg: #4CAF50;   /* Grün */
+    --button-copy-bg: #4CAF50; /* Grün */
     --button-copy-text: #ffffff;
-    --bulk-delete-bg: #d32f2f;   /* Dunkleres Rot */
+    --bulk-delete-bg: #d32f2f; /* Dunkleres Rot */
     --bulk-delete-text: #ffffff;
     --bulk-delete-hover-bg: #e53935; /* Dunkleres Rot beim Hover */
     --text-secondary-color: #555555;
@@ -25,7 +25,7 @@ body {
     transition: background-color 0.3s, color 0.3s;
 }
 
-.quill-editor { /* This is the #answerBox container */
+.quill-editor {
     margin-bottom: 10px;
     background-color: var(--editor-background);
     border: 1px solid var(--border-color);
@@ -34,15 +34,15 @@ body {
 
 /* MODIFIED for dynamic height and scrolling fix */
 #answerBox .ql-editor {
-    min-height: 150px; /* A comfortable starting height */
-    max-height: 300px; /* The maximum height before scrolling starts */
-    overflow-y: auto;  /* Add a scrollbar automatically when content exceeds max-height */
+    min-height: 150px;
+    max-height: 300px;
+    overflow-y: auto;
     height: auto;
     box-sizing: border-box;
 }
 
-
-.button-container, .button-container-main {
+.button-container,
+.button-container-main {
     display: flex;
     align-items: center;
     margin-bottom: 10px;
@@ -50,8 +50,8 @@ body {
 }
 
 button {
-    padding: 8px 16px;  
-    font-size: 14px;      
+    padding: 8px 16px;
+    font-size: 14px;
     cursor: pointer;
     color: var(--button-text-color);
     border: none;
@@ -66,44 +66,39 @@ button:hover {
 
 /* Spezifische Button-Stile */
 #reloadBtn {
-    background-color: #003f5c;  
+    background-color: #003f5c;
 }
 #reloadBtn:hover {
-    background-color: #2f4b7c;  
+    background-color: #2f4b7c;
 }
-
 #clearAllBtn {
-    background-color: #d62728;  
+    background-color: #d62728;
 }
 #clearAllBtn:hover {
-    background-color: #ff6347;  
+    background-color: #ff6347;
 }
-
 #clearBtn {
-    background-color: #f44336;  
+    background-color: #f44336;
 }
 #clearBtn:hover {
-    background-color: #ff7961;  
+    background-color: #ff7961;
 }
-
 #copyAnswerBtn {
-    background-color: var(--button-copy-bg);  
-    color: var(--button-copy-text);  
+    background-color: var(--button-copy-bg);
+    color: var(--button-copy-text);
 }
 #copyAnswerBtn:hover {
-    background-color: #66BB6A;  
+    background-color: #66BB6A;
 }
-
 .exportTxtBtn {
-    background-color: var(--button-copy-bg);  
-    color: var(--button-copy-text);  
+    background-color: var(--button-copy-bg);
+    color: var(--button-copy-text);
 }
 .exportTxtBtn:hover {
-    background-color: #66BB6A;  
+    background-color: #66BB6A;
 }
-
 .deleteAnswerBtn {
-    background-color: #f44336;  
+    background-color: #f44336;
     color: #ffffff;
     border: none;
     border-radius: 4px;
@@ -111,11 +106,10 @@ button:hover {
     transition: background-color 0.3s;
 }
 .deleteAnswerBtn:hover {
-    background-color: #d32f2f;  
+    background-color: #d32f2f;
 }
-
 .printAnswerBtn {
-    background-color: #2196F3;  
+    background-color: #2196F3;
     color: #ffffff;
     border: none;
     border-radius: 4px;
@@ -123,17 +117,15 @@ button:hover {
     transition: background-color 0.3s;
 }
 .printAnswerBtn:hover {
-    background-color: #1E88E5;  
+    background-color: #1E88E5;
 }
-
 #printAllBtn {
-    background-color: var(--button-print-all-bg);  
-    color: var(--button-copy-text);  
+    background-color: var(--button-print-all-bg);
+    color: var(--button-copy-text);
 }
 #printAllBtn:hover {
-    background-color: var(--button-print-all-hover-bg);  
+    background-color: var(--button-print-all-hover-bg);
 }
-
 #bulkDeleteBtn {
     background-color: var(--bulk-delete-bg);
     color: var(--bulk-delete-text);
@@ -144,60 +136,45 @@ button:hover {
     cursor: pointer;
     transition: background-color 0.3s;
 }
-
 #bulkDeleteBtn:hover:not(:disabled) {
     background-color: var(--bulk-delete-hover-bg);
 }
-
 #bulkDeleteBtn:disabled {
-    background-color: #e57373;  
+    background-color: #e57373;
     cursor: not-allowed;
 }
-
 #printAllSubIdsBtn {
-    background-color: #673AB7;  
+    background-color: #673AB7;
     color: white;
 }
 #printAllSubIdsBtn:hover {
-    background-color: #5E35B1;  
+    background-color: #5E35B1;
 }
-
 #submitAssignmentBtn {
     background-color: #4285F4; /* Google Blue */
 }
 #submitAssignmentBtn:hover {
     background-color: #3367D6;
 }
-
-#generatePdfBtn {
-    background-color: #009688; /* Teal */
-}
-#generatePdfBtn:hover {
-    background-color: #00796B;
-}
-
 #printAssignmentBtn {
-    background-color: #673AB7;  /* Purple */
+    background-color: #673AB7; /* Purple */
     color: white;
 }
 #printAssignmentBtn:hover {
-    background-color: #5E35B1;  
+    background-color: #5E35B1;
 }
-
 #savedAnswerContainer {
     margin-top: 20px;
     border: 1px solid var(--border-color);
     padding: 10px;
     border-radius: 5px;
     background-color: var(--editor-background);
-    display: none;  
+    display: none;
     position: relative;
 }
-
 #savedAnswerContainer h3 {
     margin-bottom: 10px;
 }
-
 #savedAnswer {
     white-space: pre-wrap;
     font-size: 14px;
@@ -209,21 +186,18 @@ button:hover {
     overflow: auto;
     border: none;
 }
-
 #copyAnswerBtn {
     display: none;
 }
-
-#savedAnswerContainer, .draft .answerText {
-    white-space: pre-wrap;  
+#savedAnswerContainer,
+.draft .answerText {
+    white-space: pre-wrap;
 }
-
 .info-text {
     font-style: italic;
     color: var(--text-secondary-color);
     margin-bottom: 20px;
 }
-
 .draft {
     margin-bottom: 30px;
     border: 1px solid var(--border-color);
@@ -231,9 +205,8 @@ button:hover {
     border-radius: 5px;
     background-color: var(--editor-background);
     position: relative;
-    padding-left: 40px;  
+    padding-left: 40px;
 }
-
 .answerText {
     white-space: pre-wrap;
     font-size: 14px;
@@ -245,23 +218,20 @@ button:hover {
     border: none;
     margin-top: 10px;
 }
-
 .button-group {
     display: flex;
-    gap: 10px;  
+    gap: 10px;
     margin-top: 10px;
 }
-
 .copyAnswerBtn {
     display: none;
 }
-
 #exportTxtBtn {
-    background-color: var(--button-copy-bg);  
-    color: var(--button-copy-text);  
+    background-color: var(--button-copy-bg);
+    color: var(--button-copy-text);
 }
 #exportTxtBtn:hover {
-    background-color: #66BB6A;  
+    background-color: #66BB6A;
 }
 
 /* Druckstile */
@@ -280,7 +250,8 @@ button:hover {
         visibility: visible;
     }
 
-    #printAllContent, #printSingleContent {
+    #printAllContent,
+    #printSingleContent {
         position: absolute;
         left: 0;
         top: 0;
@@ -290,7 +261,7 @@ button:hover {
     .quill-editor {
         display: none;
     }
-    
+
     #printAllContent .ql-editor,
     #printSingleContent .ql-editor {
         visibility: visible;
@@ -300,7 +271,6 @@ button:hover {
         border: none !important;
     }
 
-
     pre {
         white-space: pre-wrap;
         font-size: 14px;
@@ -309,7 +279,7 @@ button:hover {
         width: 100%;
         height: auto;
         margin-bottom: 20px;
-        border: none;  
+        border: none;
     }
 
     #printAllContent .draft,
@@ -328,7 +298,8 @@ button:hover {
         display: none;
     }
 
-    details, summary {
+    details,
+    summary {
         display: none;
     }
 
@@ -347,13 +318,11 @@ details {
     padding: 10px;
     background-color: var(--editor-background);
 }
-
 summary {
     font-weight: bold;
     cursor: pointer;
     outline: none;
 }
-
 details[open] summary::after {
     content: " ▲";
 }
@@ -361,7 +330,6 @@ summary::after {
     content: " ▼";
     float: right;
 }
-
 #saveIndicator {
     position: fixed;
     top: 10px;
@@ -373,40 +341,31 @@ summary::after {
     opacity: 0;
     transition: opacity 0.5s;
 }
-
 .questions-container {
     margin-bottom: 15px;
 }
-
 .questions-container ol li {
-  line-height: 1.2;
-  margin-bottom: 0.4em;
+    line-height: 1.2;
+    margin-bottom: 0.4em;
 }
-
 .questions-container div {
     margin-bottom: 5px;
 }
-
 .questions-container strong {
     color: #004085;
-    font-weight: bold;  
+    font-weight: bold;
 }
-
 .questions-container em {
     color: #004085;
-    font-style: italic;  
+    font-style: italic;
 }
-
-
 .sub-id-info {
     margin-bottom: 15px;
 }
-
 .ql-container.ql-snow {
     border: 1px solid var(--border-color);
     border-top: 0;
 }
-
 .ql-toolbar.ql-snow {
     border: 1px solid var(--border-color);
 }
@@ -419,17 +378,14 @@ summary::after {
     border-radius: 4px;
     background-color: #f9f9f9;
 }
-
 .attachments-section h4 {
     margin-top: 0;
     margin-bottom: 10px;
     color: #003f5c;
 }
-
 .file-input-wrapper {
     margin-bottom: 15px;
 }
-
 #current-attachments .attachment-item {
     display: flex;
     justify-content: space-between;
@@ -441,7 +397,6 @@ summary::after {
     margin-bottom: 8px;
     font-size: 14px;
 }
-
 .remove-attachment-btn {
     padding: 4px 10px;
     font-size: 12px;
@@ -449,7 +404,6 @@ summary::after {
     color: white;
     cursor: pointer;
 }
-
 .remove-attachment-btn:hover {
     background-color: #e53935;
 }
