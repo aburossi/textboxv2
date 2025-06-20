@@ -7,7 +7,7 @@
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
     // IMPORTANT: This URL is for assignment submission.
-    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
+    const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwka6kYdyQKXzhKyS8ZVX4s7aPxqtpavWNN-Q-4P4DQXoy7lBrctM0UNLAa4L4CKpQr1Q/exec';
     const DB_NAME = 'allgemeinbildungDB';
     const ATTACHMENT_STORE = 'attachments';
     let quill; // Global state for the editor
