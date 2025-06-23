@@ -159,7 +159,7 @@
             const key = localStorage.key(i);
             if (key && key.startsWith(questionPrefix)) {
                 const subId = key.substring(questionPrefix.length);
-            _if (!payload[assignmentId][subId]) payload[assignmentId][subId] = {};
+            if (!payload[assignmentId][subId]) payload[assignmentId][subId] = {};
                 try {
                     payload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
                 } catch (e) { console.error("Error parsing questions for export", e); }
