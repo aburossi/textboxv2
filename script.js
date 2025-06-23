@@ -85,6 +85,18 @@
     const getQueryParams = () => new URLSearchParams(window.location.search);
     const parseMarkdown = (text) => { if (!text) return ''; text = text.replace(/(\*\*|__)(?=\S)(.*?)(?<=\S)\1/g, '<strong>$2</strong>'); text = text.replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, '<em>$2</em>'); return text; };
     function showSaveIndicator() { const i = document.getElementById('saveIndicator'); if (!i) return; i.style.opacity = '1'; setTimeout(() => { i.style.opacity = '0'; }, 2000); }
+    
+    function showPasteError() {
+        const notification = document.getElementById('paste-error-notification');
+        if (notification) {
+            if (notification.style.display === 'block') return; // Don't stack messages
+            notification.style.display = 'block';
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 3000); // Hide after 3 seconds
+        }
+    }
+
     async function createSha256Hash(str) { const b = new TextEncoder().encode(str); const h = await crypto.subtle.digest('SHA-256', b); return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join(''); }
     function getCanonicalJSONString(data) { if (data === null || typeof data !== 'object') return JSON.stringify(data); if (Array.isArray(data)) return `[${data.map(getCanonicalJSONString).join(',')}]`; const k = Object.keys(data).sort(); const p = k.map(key => `${JSON.stringify(key)}:${getCanonicalJSONString(data[key])}`); return `{${p.join(',')}}`; }
 
@@ -147,7 +159,7 @@
             const key = localStorage.key(i);
             if (key && key.startsWith(questionPrefix)) {
                 const subId = key.substring(questionPrefix.length);
-                if (!payload[assignmentId][subId]) payload[assignmentId][subId] = {};
+            _if (!payload[assignmentId][subId]) payload[assignmentId][subId] = {};
                 try {
                     payload[assignmentId][subId].questions = JSON.parse(localStorage.getItem(key));
                 } catch (e) { console.error("Error parsing questions for export", e); }
@@ -491,6 +503,9 @@
                 clipboard: {
                     matchers: [
                         [Node.TEXT_NODE, (node, delta) => {
+                            if (node.textContent && node.textContent.trim().length > 0) {
+                                showPasteError();
+                            }
                             // Return an empty Delta object to ignore the pasted text
                             return new Delta();
                         }]
