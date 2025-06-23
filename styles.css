@@ -359,9 +359,17 @@ summary::after {
     color: #004085;
     font-style: italic;
 }
+
+/* MODIFIED: Reduce space between Sub-ID/Questions and Quill Editor */
 .sub-id-info {
-    margin-bottom: 15px;
+    margin-bottom: 5px; /* Was 15px */
 }
+
+/* ADDED: Reduce space above the Sub-ID title */
+.sub-id-info h4 {
+    margin-top: 0;
+}
+
 .ql-container.ql-snow {
     border: 1px solid var(--border-color);
     border-top: 0;
@@ -370,36 +378,50 @@ summary::after {
     border: 1px solid var(--border-color);
 }
 
-/* Step 1.5: Styles for Attachments Section */
+
+/* MODIFIED: Styles for compact Attachments Section */
 .attachments-section {
-    margin-top: 20px;
-    padding: 15px;
-    border: 1px solid var(--border-color);
+    margin-top: 15px;
+    padding: 0;
+    border: none;
+    background-color: transparent;
+}
+
+/* ADDED: Style for the new file upload button label */
+.file-upload-btn {
+    display: inline-block;
+    padding: 6px 12px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--button-text-color);
+    background-color: #6c757d; /* A more neutral color */
+    border: none;
     border-radius: 4px;
-    background-color: #f9f9f9;
-}
-.attachments-section h4 {
-    margin-top: 0;
+    transition: background-color 0.3s;
     margin-bottom: 10px;
-    color: #003f5c;
 }
-.file-input-wrapper {
-    margin-bottom: 15px;
+
+.file-upload-btn:hover {
+    background-color: #5a6268;
 }
+
+/* MODIFIED: Compact list of attached files */
 #current-attachments .attachment-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px;
+    padding: 6px; /* Was 8px */
     border-radius: 4px;
     background-color: #fff;
     border: 1px solid #e0e0e0;
-    margin-bottom: 8px;
-    font-size: 14px;
+    margin-bottom: 5px; /* Was 8px */
+    font-size: 13px; /* Was 14px */
 }
+
+/* MODIFIED: Smaller remove button */
 .remove-attachment-btn {
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: 3px 8px; /* Was 4px 10px */
+    font-size: 11px; /* Was 12px */
     background-color: #d32f2f;
     color: white;
     cursor: pointer;
