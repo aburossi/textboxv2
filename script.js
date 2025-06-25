@@ -6,8 +6,6 @@
     const STORAGE_PREFIX = 'textbox-assignment_';
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
     const QUESTIONS_PREFIX = 'textbox-questions_';
-    const QUIZ_ANSWERS_PREFIX = 'textbox-quizdata_';
-    const QUIZ_QUESTIONS_PREFIX = 'textbox-quizquestions_';
     // IMPORTANT: This URL is for assignment submission.
     const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbze5K91wdQtilTZLU8IW1iRIrXnAhlhf4kLn4xq0IKXIS7BCYN5H3YZlz32NYhqgtcLSA/exec';
     const DB_NAME = 'allgemeinbildungDB';
@@ -220,8 +218,6 @@
         const allDataPayload = {};
         const answerRegex = new RegExp(`^${STORAGE_PREFIX}(.+)_${SUB_STORAGE_PREFIX}(.+)$`);
         const questionRegex = new RegExp(`^${QUESTIONS_PREFIX}(.+)_${SUB_STORAGE_PREFIX}(.+)$`);
-        const quizAnswerRegex = new RegExp(`^<span class="math-inline">\{QUIZ\_ANSWERS\_PREFIX\}\(\.\+\)\_</span>{SUB_STORAGE_PREFIX}(.+)$`);
-        const quizQuestionRegex = new RegExp(`^<span class="math-inline">\{QUIZ\_QUESTIONS\_PREFIX\}\(\.\+\)\_</span>{SUB_STORAGE_PREFIX}(.+)$`);
 
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
@@ -246,29 +242,6 @@
                 } catch (e) { console.error(`Error parsing questions for key ${key}`, e); }
             }
         }
-
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            const quizAnswerMatch = key.match(quizAnswerRegex);
-            if (quizAnswerMatch) {
-                const [, assignmentId, subId] = quizAnswerMatch;
-                if (!allDataPayload[assignmentId]) allDataPayload[assignmentId] = {};
-                if (!allDataPayload[assignmentId][subId]) allDataPayload[assignmentId][subId] = {};
-                try {
-                    allDataPayload[assignmentId][subId].quiz_answers = JSON.parse(localStorage.getItem(key));
-                } catch (e) { console.error(`Error parsing quiz answers for key ${key}`, e); }
-            }
-
-            const quizQuestionMatch = key.match(quizQuestionRegex);
-            if (quizQuestionMatch) {
-                const [, assignmentId, subId] = quizQuestionMatch;
-                if (!allDataPayload[assignmentId]) allDataPayload[assignmentId] = {};
-                if (!allDataPayload[assignmentId][subId]) allDataPayload[assignmentId][subId] = {};
-                try {
-                    allDataPayload[assignmentId][subId].quiz_questions = JSON.parse(localStorage.getItem(key));
-                } catch (e) { console.error(`Error parsing quiz questions for key ${key}`, e); }
-            }
-        }
         
         const currentParams = getQueryParams();
         const currentAssignmentId = currentParams.get('assignmentId');
@@ -348,113 +321,46 @@
     }
 
     // --- PRINT FUNCTION ---
-    async function printAssignment() {
-        // This function now gathers data for ALL assignments to build a complete printable document
-        const data = await gatherAllAssignmentsData(false); // Use the comprehensive gather function
-        if (!data || !data.payload) return;
+    async function printAssignment() {
+        const data = await gatherCurrentAssignmentData(false);
+        if (!data || !data.payload) return;
+        const assignmentId = data.assignmentId;
+        const assignmentData = data.payload[assignmentId];
+        const assignmentSuffix = assignmentId.includes('_') ? assignmentId.substring(assignmentId.indexOf('_') + 1) : assignmentId;
+        const sortedSubIds = Object.keys(assignmentData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+        let allContent = `<h2>${assignmentSuffix}</h2>`;
+        sortedSubIds.forEach((subId, index) => {
+            const subData = assignmentData[subId];
+            const answerContent = subData.answer;
+            const questions = subData.questions;
+            let questionsHtml = '';
+            if (questions && Object.keys(questions).length > 0) {
+                const sortedKeys = Object.keys(questions).sort((a, b) => (parseInt(a.replace('question', ''), 10) - parseInt(b.replace('question', ''), 10)));
+                questionsHtml = '<div class="questions-print"><ol>';
+                sortedKeys.forEach(qKey => { questionsHtml += `<li>${parseMarkdown(questions[qKey])}</li>`; });
+                questionsHtml += '</ol></div>';
+            }
+            if (questionsHtml || answerContent) {
+                const blockClass = 'sub-assignment-block' + (index > 0 ? ' new-page' : '');
+                allContent += `<div class="${blockClass}">`;
+                allContent += `<h3>Thema: ${subId}</h3>`;
+                if (questionsHtml) allContent += questionsHtml;
+                allContent += `<div class="lined-content">${answerContent || '<p><em>Keine Antwort vorhanden.</em></p>'}</div>`;
+                allContent += `</div>`;
+            }
+        });
+        printFormattedContent(allContent, `Druckansicht: ${assignmentSuffix}`);
+    }
 
-        const params = getQueryParams();
-        const currentAssignmentId = params.get('assignmentId');
-        if (!currentAssignmentId || !data.payload[currentAssignmentId]) {
-            alert("Für den aktuellen Auftrag wurden keine Daten zum Drucken gefunden.");
-            return;
-        }
-
-        const assignmentData = data.payload[currentAssignmentId];
-        const assignmentSuffix = currentAssignmentId.includes('_') ? currentAssignmentId.substring(currentAssignmentId.indexOf('_') + 1) : currentAssignmentId;
-        const sortedSubIds = Object.keys(assignmentData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-        let allContent = `<h2>${assignmentSuffix}</h2>`;
-
-        sortedSubIds.forEach((subId, index) => {
-            const subData = assignmentData[subId];
-            const blockClass = 'sub-assignment-block' + (index > 0 ? ' new-page' : '');
-            let subContentHtml = '';
-
-            // 1. Handle regular questions (from answers.html)
-            if (subData.questions) {
-                const sortedKeys = Object.keys(subData.questions).sort((a, b) => (parseInt(a.replace('question', ''), 10) - parseInt(b.replace('question', ''), 10)));
-                let questionsHtml = '<div class="questions-print"><ol>';
-                sortedKeys.forEach(qKey => { questionsHtml += `<li>${parseMarkdown(subData.questions[qKey])}</li>`; });
-                questionsHtml += '</ol></div>';
-                subContentHtml += questionsHtml;
-            }
-
-            // 2. Handle Quill editor answers (from answers.html)
-            if (subData.answer) {
-                subContentHtml += `<div class="lined-content">${subData.answer}</div>`;
-            }
-
-            // 3. Handle QUIZ data (from quiz.html)
-            if (subData.quiz_questions && subData.quiz_answers) {
-                let quizHtml = '<div class="quiz-print">';
-                subData.quiz_questions.forEach((q, qIndex) => {
-                    const questionId = `q${qIndex}`;
-                    const studentResponse = subData.quiz_answers.answeredQuestions[questionId];
-
-                    quizHtml += `<div class="quiz-print-item">`;
-                    quizHtml += `<div class="quiz-print-q">${q.question}</div>`;
-
-                    let studentAnswerText = "<em>Nicht beantwortet</em>";
-                    if (studentResponse) {
-                        if (q.type === 'TrueFalse') {
-                            studentAnswerText = studentResponse.answer === 'true' ? 'Richtig' : 'Falsch';
-                        } else if (q.type === 'MultipleChoice') {
-                            studentAnswerText = q.options[studentResponse.answer]?.text || 'Ungültige Antwort';
-                        }
-                    }
-                    quizHtml += `<div class="quiz-print-a"><strong>Antwort:</strong> ${studentAnswerText}</div>`;
-                    quizHtml += `</div>`;
-                });
-                quizHtml += '</div>';
-                subContentHtml += quizHtml;
-            }
-
-            if (subContentHtml) {
-                allContent += `<div class="${blockClass}">`;
-                allContent += `<h3>Thema: ${subId}</h3>`;
-                allContent += subContentHtml;
-                allContent += `</div>`;
-            }
-        });
-
-        printFormattedContent(allContent, `Druckansicht: ${assignmentSuffix}`);
-    }
-
-    function printFormattedContent(content, printWindowTitle = 'Druckansicht') {
-        const printWindow = window.open('', '', 'height=800,width=800');
-        if (!printWindow) { alert("Bitte erlaube Pop-up-Fenster, um drucken zu können."); return; }
-        const lineHeight = '1.4em';
-        const lineColor = '#d2d2d2';
-        printWindow.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>${printWindowTitle}</title><style>
-            body{font-family:Arial,sans-serif;color:#333;line-height:${lineHeight};padding:${lineHeight};margin:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-            @page{size:A4;margin:1cm}
-            .lined-content{background-color:#fdfdfa;position:relative;min-height:calc(22 * ${lineHeight});height:auto;overflow:visible;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(${lineHeight} - 1px),${lineColor} calc(${lineHeight} - 1px),${lineColor} ${lineHeight});background-size:100% ${lineHeight};background-position:0 0;background-repeat:repeat-y}
-            h1,h2,h3,p,li,div,.questions-print,.sub-assignment-block{line-height:inherit;background-color:transparent!important;margin-top:0;margin-bottom:0}
-            h2{color:#003f5c;margin-bottom:${lineHeight}}
-            h3{color:#2f4b7c;margin-top:${lineHeight};margin-bottom:${lineHeight};page-break-after:avoid}
-            ul,ol{margin-top:0;margin-bottom:${lineHeight};padding-left:2em}
-            .questions-print ol{margin-bottom:${lineHeight};padding-left:1.5em}
-            .questions-print li{margin-bottom:.25em}
-            .sub-assignment-block{margin-bottom:${lineHeight};padding-top:.1px}
-            @media print{
-                .sub-assignment-block{page-break-after:always}
-                .sub-assignment-block:last-child{page-break-after:auto}
-            }
-            
-            /* START: ADDED CSS FOR QUIZ PRINTING */
-            .quiz-print { margin-top: 1em; }
-            .quiz-print-item { margin-bottom: 1em; padding-left: 1.5em; text-indent: -1.5em; }
-            .quiz-print-q p { display: inline; }
-            .quiz-print-a { margin-top: 0.2em; padding-left: 1.5em; }
-            .quiz-print-a strong { color: #003f5c; }
-            /* END: ADDED CSS */
-
-            </style></head><body>${content}</body></html>`);
-        printWindow.document.close();
-        printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
-    }
-
+    function printFormattedContent(content, printWindowTitle = 'Druckansicht') {
+        const printWindow = window.open('', '', 'height=800,width=800');
+        if (!printWindow) { alert("Bitte erlaube Pop-up-Fenster, um drucken zu können."); return; }
+        const lineHeight = '1.4em';
+        const lineColor = '#d2d2d2';
+        printWindow.document.write(`<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>${printWindowTitle}</title><style>body{font-family:Arial,sans-serif;color:#333;line-height:${lineHeight};padding:${lineHeight};margin:0;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}@page{size:A4;margin:1cm}.lined-content{background-color:#fdfdfa;position:relative;min-height:calc(22 * ${lineHeight});height:auto;overflow:visible;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent calc(${lineHeight} - 1px),${lineColor} calc(${lineHeight} - 1px),${lineColor} ${lineHeight});background-size:100% ${lineHeight};background-position:0 0;background-repeat:repeat-y}h1,h2,h3,p,li,div,.questions-print,.sub-assignment-block{line-height:inherit;background-color:transparent!important;margin-top:0;margin-bottom:0}h2{color:#003f5c;margin-bottom:${lineHeight}}h3{color:#2f4b7c;margin-top:${lineHeight};margin-bottom:${lineHeight};page-break-after:avoid}ul,ol{margin-top:0;margin-bottom:${lineHeight};padding-left:2em}.questions-print ol{margin-bottom:${lineHeight};padding-left:1.5em}.questions-print li{margin-bottom:.25em}.sub-assignment-block{margin-bottom:${lineHeight};padding-top:.1px}@media print{.sub-assignment-block{page-break-after:always}.sub-assignment-block:last-child{page-break-after:auto}}</style></head><body>${content}</body></html>`);
+        printWindow.document.close();
+        printWindow.onload = () => { setTimeout(() => { printWindow.focus(); printWindow.print(); }, 500); };
+    }
 
     // --- LOCAL RESTORE FUNCTIONALITY ---
     async function importLocalBackup(event) {
