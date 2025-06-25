@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Richtig/Falsch Quiz</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f9f9f9; }
+        h2 { color: #003f5c; }
+        .quiz-item { background-color: #fff; border: 1px solid #ccc; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .quiz-item p { margin-top: 0; font-size: 1.1em; }
+        .quiz-item .options { display: flex; gap: 20px; margin-top: 10px; }
+        .quiz-item label { cursor: pointer; display: flex; align-items: center; }
+        .quiz-item input[type="radio"] { margin-right: 8px; }
+        #saveIndicator { position: fixed; top: 10px; right: 10px; background-color: #4CAF50; color: white; padding: 8px 16px; border-radius: 4px; opacity: 0; transition: opacity 0.5s; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="saveIndicator">Gespeichert</div>
+    
+    <div id="quiz-header">
+        <h2 id="assignment-title">Lade Quiz...</h2>
+    </div>
+
+    <form id="quiz-form">
+        </form>
+
+    <script src="quiz-script.js"></script>
+
+</body>
+</html>
