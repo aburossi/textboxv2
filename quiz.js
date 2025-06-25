@@ -1,4 +1,4 @@
-// quiz.js - v4 (Single Question View & Randomization)
+// quiz.js - v5 (Start New Functionality)
 (function() {
     'use strict';
 
@@ -33,7 +33,8 @@
         nextBtn: document.getElementById('next-btn'),
         resultsScreen: document.getElementById('results-screen'),
         resultsSummary: document.getElementById('results-summary'),
-        restartBtn: document.getElementById('restart-btn'),
+        startNewNavBtn: document.getElementById('start-new-btn-nav'),
+        startNewResultsBtn: document.getElementById('start-new-btn-results'),
         header: document.getElementById('quiz-header')
     };
 
@@ -179,8 +180,18 @@
         renderCurrentQuestion();
     }
     
-    function handleRestartClick() {
-        setupQuiz();
+    function startNewQuiz() {
+        const confirmed = confirm("Möchten Sie wirklich neu beginnen? Alle Ihre bisherigen Antworten für dieses Quiz werden gelöscht.");
+        if (confirmed) {
+            // 1. Clear stored data for this quiz
+            localStorage.removeItem(state.answersStorageKey);
+
+            // 2. Reset the in-memory state
+            state.userAnswers = {};
+
+            // 3. Restart the quiz from the beginning
+            setupQuiz();
+        }
     }
     
     // --- DATA & STATE MANAGEMENT ---
@@ -209,6 +220,7 @@
 
     function loadAnswers() {
         const savedData = localStorage.getItem(state.answersStorageKey);
+        state.userAnswers = {}; // Default to empty
         if (savedData) {
             try {
                 const results = JSON.parse(savedData);
@@ -245,6 +257,7 @@
     // --- EVENT LISTENERS ---
     document.addEventListener('DOMContentLoaded', initializeQuiz);
     elements.nextBtn.addEventListener('click', handleNextClick);
-    elements.restartBtn.addEventListener('click', handleRestartClick);
+    elements.startNewNavBtn.addEventListener('click', startNewQuiz);
+    elements.startNewResultsBtn.addEventListener('click', startNewQuiz);
 
 })();
