@@ -1,7 +1,8 @@
-// quiz.js - v3 (Simplified URL Loading)
+// quiz.js - v4 (Single Question View & Randomization)
 (function() {
     'use strict';
 
+    // --- CONSTANTS & STATE ---
     const QUIZ_ANSWERS_PREFIX = 'textbox-quizdata_';
     const QUIZ_QUESTIONS_PREFIX = 'textbox-quizquestions_';
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
@@ -9,119 +10,141 @@
     const params = new URLSearchParams(window.location.search);
     const quizId = params.get('Id');
 
+    let state = {
+        allQuestions: [],
+        currentQuestionIndex: 0,
+        userAnswers: {}, // Stores { q_original_index: { answer: '...', isCorrect: true/false } }
+        quizMetadata: {},
+        answersStorageKey: '',
+        questionsStorageKey: ''
+    };
+
+    // --- DOM ELEMENTS ---
     const elements = {
         title: document.getElementById('assignment-title'),
         subTitle: document.getElementById('sub-id-title'),
         intro: document.getElementById('intro-text'),
-        form: document.getElementById('quiz-form'),
-        indicator: document.getElementById('saveIndicator')
+        indicator: document.getElementById('saveIndicator'),
+        quizMain: document.getElementById('quiz-main'),
+        questionArea: document.getElementById('question-area'),
+        feedbackArea: document.getElementById('feedback-area'),
+        navigation: document.getElementById('quiz-navigation'),
+        progressIndicator: document.getElementById('progress-indicator'),
+        nextBtn: document.getElementById('next-btn'),
+        resultsScreen: document.getElementById('results-screen'),
+        resultsSummary: document.getElementById('results-summary'),
+        restartBtn: document.getElementById('restart-btn'),
+        header: document.getElementById('quiz-header')
     };
 
+    // --- INITIALIZATION ---
     if (!quizId) {
         elements.title.textContent = "Fehler";
-        elements.form.innerHTML = "<p>Ein 'Id' Parameter in der URL ist erforderlich, um das Quiz zu laden (z.B. ?Id=wirtschaft).</p>";
+        elements.quizMain.style.display = 'block';
+        elements.questionArea.innerHTML = "<p>Ein 'Id' Parameter in der URL ist erforderlich, um das Quiz zu laden (z.B. ?Id=wirtschaft).</p>";
+        elements.navigation.style.display = 'none';
         return;
     }
 
     const quizJsonPath = `quizzes/${quizId}.json`;
 
-    async function loadAndRenderQuiz() {
+    async function initializeQuiz() {
         try {
             const response = await fetch(quizJsonPath);
             if (!response.ok) throw new Error(`Netzwerk-Fehler: ${response.statusText}`);
             const data = await response.json();
-            
-            // *** CRITICAL: Get metadata FROM the JSON file ***
-            const { assignmentId, subId } = data;
-            if (!assignmentId || !subId) {
-                throw new Error("Die JSON-Datei muss 'assignmentId' and 'subId' enthalten.");
+
+            const { assignmentId, subId, questions } = data;
+            if (!assignmentId || !subId || !questions) {
+                throw new Error("Die JSON-Datei muss 'assignmentId', 'subId' und 'questions' enthalten.");
             }
 
-            // Set titles and render the quiz
+            state.quizMetadata = data;
+            state.answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+            state.questionsStorageKey = `${QUIZ_QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+            
+            state.allQuestions = questions.map((q, index) => ({ ...q, originalIndex: index }));
+
             elements.title.textContent = data.title || assignmentId.split('_').join(' ');
             elements.subTitle.textContent = subId;
-            renderQuiz(data);
+             if (data.customIntroText) {
+                elements.intro.innerHTML = data.customIntroText;
+                elements.intro.style.display = 'block';
+            }
 
-            // Now that we have the IDs, define storage keys
-            const answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
-            const questionsStorageKey = `${QUIZ_QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
-            
-            // Save questions and load answers
-            localStorage.setItem(questionsStorageKey, JSON.stringify(data.questions));
-            loadAnswers(answersStorageKey, data.questions);
+            localStorage.setItem(state.questionsStorageKey, JSON.stringify(questions));
+
+            setupQuiz();
 
         } catch (error) {
             console.error('Fehler beim Laden oder Verarbeiten des Quiz:', error);
             elements.title.textContent = "Quiz konnte nicht geladen werden";
-            elements.form.innerHTML = `<p>Die Quiz-Datei unter <strong>${quizJsonPath}</strong> konnte nicht geladen werden. Fehlermeldung: ${error.message}</p>`;
+            elements.header.style.borderBottom = 'none';
+            elements.quizMain.style.display = 'block';
+            elements.quizMain.innerHTML = `<p>Die Quiz-Datei unter <strong>${quizJsonPath}</strong> konnte nicht geladen werden. Fehlermeldung: ${error.message}</p>`;
+            elements.navigation.style.display = 'none';
         }
     }
-    
-    function renderQuiz(data) {
-        // This function remains the same as before
-        if (data.customIntroText) {
-            elements.intro.innerHTML = data.customIntroText;
-            elements.intro.style.display = 'block';
-        }
-        
-        let formHtml = '';
-        data.questions.forEach((q, index) => {
-            const questionId = `q${index}`;
-            formHtml += `<div class="question-item" id="item-${questionId}">`;
-            formHtml += `<div class="question-text">${q.question}</div>`;
-            formHtml += `<div class="options-container">`;
 
-            if (q.type === 'MultipleChoice') {
-                q.options.forEach((opt, optIndex) => {
-                    formHtml += `<label><input type="radio" name="${questionId}" value="${optIndex}" required> ${opt.text}</label>`;
-                });
-            } else if (q.type === 'TrueFalse') {
-                formHtml += `<label><input type="radio" name="${questionId}" value="true" required> Richtig</label>`;
-                formHtml += `<label><input type="radio" name="${questionId}" value="false" required> Falsch</label>`;
-            }
-            formHtml += `</div><div id="feedback-${questionId}" class="feedback-container"></div></div>`;
+    // --- QUIZ SETUP AND RENDERING ---
+
+    function setupQuiz() {
+        loadAnswers();
+        shuffle(state.allQuestions);
+        state.currentQuestionIndex = 0;
+        elements.quizMain.style.display = 'block';
+        elements.navigation.style.display = 'flex';
+        elements.resultsScreen.style.display = 'none';
+        renderCurrentQuestion();
+    }
+
+    function renderCurrentQuestion() {
+        elements.feedbackArea.innerHTML = '';
+        elements.nextBtn.disabled = true;
+
+        if (state.currentQuestionIndex >= state.allQuestions.length) {
+            showResults();
+            return;
+        }
+
+        const q = state.allQuestions[state.currentQuestionIndex];
+        const questionId = `q${q.originalIndex}`;
+        let formHtml = `<div class="question-item" id="item-${questionId}">`;
+        formHtml += `<div class="question-text"><p>${q.question}</p></div>`;
+        formHtml += `<form class="options-container">`;
+
+        const options = (q.type === 'MultipleChoice') 
+            ? q.options.map((opt, i) => ({ value: i, text: opt.text }))
+            : [{ value: 'true', text: 'Richtig' }, { value: 'false', text: 'Falsch' }];
+
+        options.forEach(opt => {
+            formHtml += `<label><input type="radio" name="${questionId}" value="${opt.value}" required> <span>${opt.text}</span></label>`;
         });
-        elements.form.innerHTML = formHtml;
-    }
-    
-    function saveAnswers(storageKey) {
-        // This function is simplified, it just needs the key
-        const formData = new FormData(elements.form);
-        const results = { answeredQuestions: {} };
 
-        for (const [questionId, answerValue] of formData.entries()) {
-            results.answeredQuestions[questionId] = { answer: answerValue };
-        }
+        formHtml += `</form></div>`;
+        elements.questionArea.innerHTML = formHtml;
         
-        localStorage.setItem(storageKey, JSON.stringify(results));
-        showSaveIndicator();
-    }
+        elements.questionArea.querySelector('.options-container').addEventListener('change', handleAnswerSelection);
+        elements.progressIndicator.textContent = `Frage ${state.currentQuestionIndex + 1} von ${state.allQuestions.length}`;
 
-    function loadAnswers(storageKey, questions) {
-        // This function now receives the storage key directly
-        const savedData = localStorage.getItem(storageKey);
-        if (savedData) {
-            try {
-                const results = JSON.parse(savedData);
-                for (const [questionId, data] of Object.entries(results.answeredQuestions)) {
-                    const radio = elements.form.querySelector(`input[name="${questionId}"][value="${data.answer}"]`);
-                    if (radio) {
-                        radio.checked = true;
-                        showFeedback(questionId, questions);
-                    }
-                }
-            } catch (e) { console.error("Fehler beim Laden der Antworten:", e); }
+        if (state.userAnswers[questionId]) {
+            const savedAnswer = state.userAnswers[questionId].answer;
+            const radio = elements.questionArea.querySelector(`input[name="${questionId}"][value="${savedAnswer}"]`);
+            if (radio) {
+                radio.checked = true;
+                showFeedback(questionId);
+                disableOptions(questionId);
+                elements.nextBtn.disabled = false;
+            }
         }
     }
 
-    function showFeedback(questionId, questions) {
-        // This function remains the same as before
-        const questionIndex = parseInt(questionId.replace('q', ''));
-        const questionData = questions[questionIndex];
-        const feedbackEl = document.getElementById(`feedback-${questionId}`);
-        const selectedRadio = elements.form.querySelector(`input[name="${questionId}"]:checked`);
-        
-        if (!selectedRadio || !feedbackEl) return;
+    function showFeedback(questionId) {
+        const originalIndex = parseInt(questionId.replace('q', ''));
+        const questionData = state.quizMetadata.questions[originalIndex];
+        const selectedRadio = elements.questionArea.querySelector(`input[name="${questionId}"]:checked`);
+
+        if (!selectedRadio || !questionData) return;
 
         let isCorrect = false;
         let feedbackHtml = '';
@@ -135,35 +158,93 @@
             feedbackHtml = isCorrect ? questionData.feedback_correct : questionData.feedback_incorrect;
         }
 
-        feedbackEl.innerHTML = feedbackHtml;
-        feedbackEl.className = `feedback-container ${isCorrect ? 'feedback-correct' : 'feedback-incorrect'}`;
-        feedbackEl.style.display = 'block';
+        state.userAnswers[questionId] = { answer: selectedRadio.value, isCorrect: isCorrect };
+        elements.feedbackArea.innerHTML = `<div class="feedback-container ${isCorrect ? 'feedback-correct' : 'feedback-incorrect'}">${feedbackHtml}</div>`;
     }
 
+    // --- EVENT HANDLERS ---
+    
+    function handleAnswerSelection(event) {
+        if (event.target.type === 'radio') {
+            const questionId = event.target.name;
+            showFeedback(questionId);
+            saveAnswers();
+            disableOptions(questionId);
+            elements.nextBtn.disabled = false;
+        }
+    }
+    
+    function handleNextClick() {
+        state.currentQuestionIndex++;
+        renderCurrentQuestion();
+    }
+    
+    function handleRestartClick() {
+        setupQuiz();
+    }
+    
+    // --- DATA & STATE MANAGEMENT ---
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    function disableOptions(questionId) {
+        const container = elements.questionArea.querySelector(`#item-${questionId}`);
+        const radios = container.querySelectorAll(`input[name="${questionId}"]`);
+        radios.forEach(radio => {
+            radio.disabled = true;
+            if(radio.checked) {
+                radio.parentElement.classList.add('selected');
+            }
+        });
+    }
+
+    function saveAnswers() {
+        localStorage.setItem(state.answersStorageKey, JSON.stringify({ answeredQuestions: state.userAnswers }));
+        showSaveIndicator();
+    }
+
+    function loadAnswers() {
+        const savedData = localStorage.getItem(state.answersStorageKey);
+        if (savedData) {
+            try {
+                const results = JSON.parse(savedData);
+                if(results.answeredQuestions) {
+                   state.userAnswers = results.answeredQuestions;
+                }
+            } catch (e) {
+                console.error("Fehler beim Laden der Antworten:", e);
+                state.userAnswers = {};
+            }
+        }
+    }
+    
     function showSaveIndicator() {
-        // This function remains the same as before
         elements.indicator.style.opacity = '1';
-        elements.indicator.style.transform = 'translateY(0)';
         setTimeout(() => {
             elements.indicator.style.opacity = '0';
-            elements.indicator.style.transform = 'translateY(100px)';
         }, 1500);
     }
+    
+    // --- QUIZ COMPLETION ---
 
-    document.addEventListener('DOMContentLoaded', () => {
-        loadAndRenderQuiz().then(() => {
-            // Add event listener after the quiz is loaded
-            elements.form.addEventListener('change', (event) => {
-                if (event.target.type === 'radio') {
-                    // Re-fetch data to get metadata for saving and feedback
-                    fetch(quizJsonPath).then(res => res.json()).then(data => {
-                        const { assignmentId, subId } = data;
-                        const answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
-                        saveAnswers(answersStorageKey);
-                        showFeedback(event.target.name, data.questions);
-                    });
-                }
-            });
-        });
-    });
+    function showResults() {
+        elements.quizMain.style.display = 'none';
+        elements.navigation.style.display = 'none';
+        elements.resultsScreen.style.display = 'block';
+
+        const totalQuestions = state.allQuestions.length;
+        const correctAnswers = Object.values(state.userAnswers).filter(answer => answer.isCorrect).length;
+        
+        elements.resultsSummary.textContent = `Du hast ${correctAnswers} von ${totalQuestions} Fragen richtig beantwortet.`;
+    }
+
+    // --- EVENT LISTENERS ---
+    document.addEventListener('DOMContentLoaded', initializeQuiz);
+    elements.nextBtn.addEventListener('click', handleNextClick);
+    elements.restartBtn.addEventListener('click', handleRestartClick);
+
 })();
