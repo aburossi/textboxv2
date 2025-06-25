@@ -5,11 +5,13 @@
     <title>Interaktives Quiz</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        /* CSS styles remain the same as before */
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f8f9fa; color: #343a40; }
         #quiz-container { background-color: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         #quiz-header { padding: 25px; border-bottom: 1px solid #dee2e6; }
-        #quiz-header h2 { margin: 0; color: #003f5c; }
-        #intro-text { padding: 0 25px; font-size: 1.1em; line-height: 1.6; }
+        #quiz-header h2 { margin: 0 0 5px 0; color: #003f5c; }
+        #quiz-header h4 { margin: 0; color: #6c757d; font-weight: normal; } /* New style for subId */
+        #intro-text { padding: 25px; font-size: 1.1em; line-height: 1.6; border-bottom: 1px solid #e9ecef;}
         #quiz-form { padding: 25px; }
         .question-item { border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 20px; background: #fff; }
         .question-item .question-text { padding: 15px; font-size: 1.1em; font-weight: bold; background-color: #f8f9fa; border-bottom: 1px solid #e9ecef; }
@@ -28,9 +30,10 @@
 
     <div id="quiz-container">
         <header id="quiz-header">
-            <h2 id="quiz-title">Lade Quiz...</h2>
+            <h2 id="assignment-title">Lade Quiz...</h2>
+            <h4 id="sub-id-title"></h4>
         </header>
-        <div id="intro-text"></div>
+        <div id="intro-text" style="display: none;"></div>
         <form id="quiz-form">
             </form>
     </div>

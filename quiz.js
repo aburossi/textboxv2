@@ -1,15 +1,20 @@
-// quiz.js
+// quiz.js - v2 (Fully Integrated)
 (function() {
     'use strict';
 
-    const QUIZ_STORAGE_PREFIX = 'textbox-quizdata_';
+    // Prefixes must be consistent with the main script.js
+    const QUIZ_ANSWERS_PREFIX = 'textbox-quizdata_';
+    const QUIZ_QUESTIONS_PREFIX = 'textbox-quizquestions_'; // For storing the questions for printing
+    const SUB_STORAGE_PREFIX = 'textbox-sub_';
+
     const params = new URLSearchParams(window.location.search);
     const quizJsonPath = params.get('quiz');
     const assignmentId = params.get('assignmentId');
     const subId = params.get('subIds');
 
     const elements = {
-        title: document.getElementById('quiz-title'),
+        title: document.getElementById('assignment-title'),
+        subTitle: document.getElementById('sub-id-title'),
         intro: document.getElementById('intro-text'),
         form: document.getElementById('quiz-form'),
         indicator: document.getElementById('saveIndicator')
@@ -20,14 +25,22 @@
         elements.form.innerHTML = "<p>Wichtige URL-Parameter fehlen (quiz, assignmentId, subIds). Das Quiz kann nicht geladen werden.</p>";
         return;
     }
+    
+    // Set titles immediately for user context
+    elements.title.textContent = assignmentId.split('_').join(' '); // Make it readable
+    elements.subTitle.textContent = subId;
 
-    const storageKey = `${QUIZ_STORAGE_PREFIX}${assignmentId}_${subId}`;
+    const answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+    const questionsStorageKey = `${QUIZ_QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
 
     async function loadAndRenderQuiz() {
         try {
             const response = await fetch(quizJsonPath);
             if (!response.ok) throw new Error(`Netzwerk-Fehler: ${response.statusText}`);
             const data = await response.json();
+
+            // *** CRITICAL: Save questions to localStorage for the print script ***
+            localStorage.setItem(questionsStorageKey, JSON.stringify(data.questions));
             
             renderQuiz(data);
             loadAnswers(data.questions);
@@ -40,8 +53,10 @@
     }
 
     function renderQuiz(data) {
-        elements.title.textContent = data.title;
-        elements.intro.innerHTML = data.customIntroText || '';
+        if (data.customIntroText) {
+            elements.intro.innerHTML = data.customIntroText;
+            elements.intro.style.display = 'block';
+        }
         
         let formHtml = '';
         data.questions.forEach((q, index) => {
@@ -69,23 +84,18 @@
             answeredQuestions: {}
         };
 
-        for (const [questionId, answerIndex] of formData.entries()) {
-            const questionIndex = parseInt(questionId.replace('q', ''));
-            const question = questions[questionIndex];
-            
+        for (const [questionId, answerValue] of formData.entries()) {
             results.answeredQuestions[questionId] = {
-                question: question.question,
-                type: question.type,
-                answer: answerIndex
+                answer: answerValue
             };
         }
         
-        localStorage.setItem(storageKey, JSON.stringify(results));
+        localStorage.setItem(answersStorageKey, JSON.stringify(results));
         showSaveIndicator();
     }
 
     function loadAnswers(questions) {
-        const savedData = localStorage.getItem(storageKey);
+        const savedData = localStorage.getItem(answersStorageKey);
         if (savedData) {
             try {
                 const results = JSON.parse(savedData);
@@ -96,9 +106,7 @@
                         showFeedback(questionId, questions);
                     }
                 }
-            } catch (e) {
-                console.error("Fehler beim Laden der Antworten:", e);
-            }
+            } catch (e) { console.error("Fehler beim Laden der Antworten:", e); }
         }
     }
 
@@ -140,7 +148,6 @@
         loadAndRenderQuiz().then(() => {
             elements.form.addEventListener('change', (event) => {
                 if (event.target.type === 'radio') {
-                    // Lazy-load questions data for saving, as it's already rendered
                     fetch(quizJsonPath).then(res => res.json()).then(data => {
                         saveAnswers(data.questions);
                         showFeedback(event.target.name, data.questions);
@@ -149,5 +156,4 @@
             });
         });
     });
-
 })();
