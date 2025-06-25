@@ -1,4 +1,4 @@
-// quiz.js - v5 (Start New Functionality)
+// quiz.js - v6 (Corrected Start New Functionality)
 (function() {
     'use strict';
 
@@ -180,16 +180,20 @@
         renderCurrentQuestion();
     }
     
+    /**
+     * Handles the logic to completely reset the quiz.
+     */
     function startNewQuiz() {
         const confirmed = confirm("Möchten Sie wirklich neu beginnen? Alle Ihre bisherigen Antworten für dieses Quiz werden gelöscht.");
         if (confirmed) {
-            // 1. Clear stored data for this quiz
+            // 1. Clear stored data for this specific quiz
             localStorage.removeItem(state.answersStorageKey);
 
-            // 2. Reset the in-memory state
+            // 2. Reset the in-memory state object for answers
             state.userAnswers = {};
-
-            // 3. Restart the quiz from the beginning
+            
+            // 3. Inform the user and restart the quiz flow
+            alert("Die gespeicherten Antworten wurden gelöscht. Das Quiz wird neu gestartet.");
             setupQuiz();
         }
     }
@@ -218,18 +222,26 @@
         showSaveIndicator();
     }
 
+    /**
+     * Loads saved answers from local storage into the state.
+     * This version is more robust against corrupted or invalid stored data.
+     */
     function loadAnswers() {
         const savedData = localStorage.getItem(state.answersStorageKey);
-        state.userAnswers = {}; // Default to empty
+        
+        // Always start with a clean slate in memory.
+        state.userAnswers = {};
+
         if (savedData) {
             try {
                 const results = JSON.parse(savedData);
-                if(results.answeredQuestions) {
+                // Only assign if the parsed data is an object and has the property we expect.
+                if (results && typeof results === 'object' && results.answeredQuestions) {
                    state.userAnswers = results.answeredQuestions;
                 }
             } catch (e) {
-                console.error("Fehler beim Laden der Antworten:", e);
-                state.userAnswers = {};
+                console.error("Fehler beim Laden der Antworten. Gespeicherte Daten sind ungültig und werden ignoriert.", e);
+                // state.userAnswers is already {}, so we proceed with a fresh quiz state.
             }
         }
     }
