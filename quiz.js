@@ -1,16 +1,13 @@
-// quiz.js - v2 (Fully Integrated)
+// quiz.js - v3 (Simplified URL Loading)
 (function() {
     'use strict';
 
-    // Prefixes must be consistent with the main script.js
     const QUIZ_ANSWERS_PREFIX = 'textbox-quizdata_';
-    const QUIZ_QUESTIONS_PREFIX = 'textbox-quizquestions_'; // For storing the questions for printing
+    const QUIZ_QUESTIONS_PREFIX = 'textbox-quizquestions_';
     const SUB_STORAGE_PREFIX = 'textbox-sub_';
 
     const params = new URLSearchParams(window.location.search);
-    const quizJsonPath = params.get('quiz');
-    const assignmentId = params.get('assignmentId');
-    const subId = params.get('subIds');
+    const quizId = params.get('Id');
 
     const elements = {
         title: document.getElementById('assignment-title'),
@@ -20,39 +17,48 @@
         indicator: document.getElementById('saveIndicator')
     };
 
-    if (!quizJsonPath || !assignmentId || !subId) {
+    if (!quizId) {
         elements.title.textContent = "Fehler";
-        elements.form.innerHTML = "<p>Wichtige URL-Parameter fehlen (quiz, assignmentId, subIds). Das Quiz kann nicht geladen werden.</p>";
+        elements.form.innerHTML = "<p>Ein 'Id' Parameter in der URL ist erforderlich, um das Quiz zu laden (z.B. ?Id=wirtschaft).</p>";
         return;
     }
-    
-    // Set titles immediately for user context
-    elements.title.textContent = assignmentId.split('_').join(' '); // Make it readable
-    elements.subTitle.textContent = subId;
 
-    const answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
-    const questionsStorageKey = `${QUIZ_QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+    const quizJsonPath = `quizzes/${quizId}.json`;
 
     async function loadAndRenderQuiz() {
         try {
             const response = await fetch(quizJsonPath);
             if (!response.ok) throw new Error(`Netzwerk-Fehler: ${response.statusText}`);
             const data = await response.json();
-
-            // *** CRITICAL: Save questions to localStorage for the print script ***
-            localStorage.setItem(questionsStorageKey, JSON.stringify(data.questions));
             
+            // *** CRITICAL: Get metadata FROM the JSON file ***
+            const { assignmentId, subId } = data;
+            if (!assignmentId || !subId) {
+                throw new Error("Die JSON-Datei muss 'assignmentId' and 'subId' enthalten.");
+            }
+
+            // Set titles and render the quiz
+            elements.title.textContent = data.title || assignmentId.split('_').join(' ');
+            elements.subTitle.textContent = subId;
             renderQuiz(data);
-            loadAnswers(data.questions);
+
+            // Now that we have the IDs, define storage keys
+            const answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+            const questionsStorageKey = `${QUIZ_QUESTIONS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+            
+            // Save questions and load answers
+            localStorage.setItem(questionsStorageKey, JSON.stringify(data.questions));
+            loadAnswers(answersStorageKey, data.questions);
 
         } catch (error) {
             console.error('Fehler beim Laden oder Verarbeiten des Quiz:', error);
             elements.title.textContent = "Quiz konnte nicht geladen werden";
-            elements.form.innerHTML = `<p>Die Quiz-Datei unter <strong>${quizJsonPath}</strong> konnte nicht geladen oder verarbeitet werden. Bitte prüfen Sie den Pfad und das JSON-Format.</p>`;
+            elements.form.innerHTML = `<p>Die Quiz-Datei unter <strong>${quizJsonPath}</strong> konnte nicht geladen werden. Fehlermeldung: ${error.message}</p>`;
         }
     }
-
+    
     function renderQuiz(data) {
+        // This function remains the same as before
         if (data.customIntroText) {
             elements.intro.innerHTML = data.customIntroText;
             elements.intro.style.display = 'block';
@@ -78,24 +84,22 @@
         elements.form.innerHTML = formHtml;
     }
     
-    function saveAnswers(questions) {
+    function saveAnswers(storageKey) {
+        // This function is simplified, it just needs the key
         const formData = new FormData(elements.form);
-        const results = {
-            answeredQuestions: {}
-        };
+        const results = { answeredQuestions: {} };
 
         for (const [questionId, answerValue] of formData.entries()) {
-            results.answeredQuestions[questionId] = {
-                answer: answerValue
-            };
+            results.answeredQuestions[questionId] = { answer: answerValue };
         }
         
-        localStorage.setItem(answersStorageKey, JSON.stringify(results));
+        localStorage.setItem(storageKey, JSON.stringify(results));
         showSaveIndicator();
     }
 
-    function loadAnswers(questions) {
-        const savedData = localStorage.getItem(answersStorageKey);
+    function loadAnswers(storageKey, questions) {
+        // This function now receives the storage key directly
+        const savedData = localStorage.getItem(storageKey);
         if (savedData) {
             try {
                 const results = JSON.parse(savedData);
@@ -110,16 +114,8 @@
         }
     }
 
-    function showSaveIndicator() {
-        elements.indicator.style.opacity = '1';
-        elements.indicator.style.transform = 'translateY(0)';
-        setTimeout(() => {
-            elements.indicator.style.opacity = '0';
-            elements.indicator.style.transform = 'translateY(100px)';
-        }, 1500);
-    }
-
     function showFeedback(questionId, questions) {
+        // This function remains the same as before
         const questionIndex = parseInt(questionId.replace('q', ''));
         const questionData = questions[questionIndex];
         const feedbackEl = document.getElementById(`feedback-${questionId}`);
@@ -144,12 +140,26 @@
         feedbackEl.style.display = 'block';
     }
 
+    function showSaveIndicator() {
+        // This function remains the same as before
+        elements.indicator.style.opacity = '1';
+        elements.indicator.style.transform = 'translateY(0)';
+        setTimeout(() => {
+            elements.indicator.style.opacity = '0';
+            elements.indicator.style.transform = 'translateY(100px)';
+        }, 1500);
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         loadAndRenderQuiz().then(() => {
+            // Add event listener after the quiz is loaded
             elements.form.addEventListener('change', (event) => {
                 if (event.target.type === 'radio') {
+                    // Re-fetch data to get metadata for saving and feedback
                     fetch(quizJsonPath).then(res => res.json()).then(data => {
-                        saveAnswers(data.questions);
+                        const { assignmentId, subId } = data;
+                        const answersStorageKey = `${QUIZ_ANSWERS_PREFIX}${assignmentId}_${SUB_STORAGE_PREFIX}${subId}`;
+                        saveAnswers(answersStorageKey);
                         showFeedback(event.target.name, data.questions);
                     });
                 }

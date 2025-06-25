@@ -1,11 +1,13 @@
 {
+  "assignmentId": "Wirtschaftskreislauf_und_Inflation",
+  "subId": "Grundlagen_Quiz",
   "title": "Wirtschaftskreislauf und Inflation Quiz",
   "media": {
     "type": "",
     "url": "",
     "source": ""
   },
-  "customIntroText": "<p><strong>Der Wirtschaftskreislauf – Worum geht es?</strong></p>\n\n<p>In diesem Beitrag lernst du das grundlegende Modell des Wirtschaftskreislaufs kennen, der wie ein Karussell die Beziehung zwischen Konsumenten und Produzenten darstellt. Es werden die beiden zentralen Ströme – der Geldstrom und der Güterstrom – erklärt. Du erfährst, wie ein Ungleichgewicht zwischen diesen beiden Strömen, insbesondere ein zu grosser Geldstrom im Vergleich zum Güterstrom, zur Inflation führt und was das für deine Kaufkraft bedeutet.</p>\n\n<p><strong>Lernziele:</strong></p>\n<ul>\n  <li>Du verstehst das Konzept des einfachen Wirtschaftskreislaufs mit Konsumenten und Produzenten.</li>\n  <li>Du kannst den Geldstrom und den Güterstrom unterscheiden und ihre jeweiligen Bestandteile benennen.</li>\n  <li>Du erkennst die zweiseitige Bewegung der beiden Ströme im Kreislauf.</li>\n  <li>Du kannst erklären, wie Inflation durch ein Ungleichgewicht zwischen Geld- und Güterstrom entsteht und was Kaufkraftverlust bedeutet.</li>\n</ul>",
+  "customIntroText": "<p><strong>Der Wirtschaftskreislauf – Worum geht es?</strong></p>\n\n<p>In diesem Beitrag lernst du...",
   "questions": [
     {
       "type": "MultipleChoice",
